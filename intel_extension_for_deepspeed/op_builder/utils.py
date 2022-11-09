@@ -1,15 +1,16 @@
 """
 Copyright 2020 The Microsoft DeepSpeed Team
 """
-from .builder import OpBuilder
+from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include  # noqa: F401
 
 
-class UtilsBuilder(OpBuilder):
+class UtilsBuilder(SYCLOpBuilder):
     BUILD_VAR = "DS_BUILD_UTILS"
     NAME = "utils"
 
-    def __init__(self):
-        super().__init__(name=self.NAME)
+    def __init__(self, name=None):
+        name = self.NAME if name is None else name
+        super().__init__(name=name)
 
     def absolute_name(self):
         return f'deepspeed.ops.{self.NAME}_op'
@@ -17,8 +18,5 @@ class UtilsBuilder(OpBuilder):
     def sources(self):
         return ['csrc/utils/flatten_unflatten.cpp']
 
-    def cxx_args(self):
-        return ['-O3', '-g', '-std=c++20', '-w', '-fPIC']
-
-    def extra_ldflags(self):
-        return ['-fPIC', '-Wl,-export-dynamic']
+    def include_paths(self):
+        return []

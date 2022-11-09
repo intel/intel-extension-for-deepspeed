@@ -47,7 +47,7 @@ class SYCLOpBuilder(OpBuilder):
         return ['-fPIC', '-Wl,-export-dynamic']
 
     def load(self, verbose=True):
-        from ...git_version_info import installed_ops, torch_info
+        from deepspeed.git_version_info import installed_ops, torch_info  # noqa: F401
         if installed_ops[self.name]:
             return importlib.import_module(self.absolute_name())
         else:
@@ -69,6 +69,8 @@ class SYCLOpBuilder(OpBuilder):
         from intel_extension_for_pytorch.xpu.cpp_extension import load
 
         start_build = time.time()
+        # Recognize relative paths as absolute paths for jit load
+
         sources = [self.deepspeed_src_path(path) for path in self.sources()]
         extra_include_paths = [
             self.deepspeed_src_path(path) for path in self.include_paths()
@@ -93,29 +95,43 @@ class SYCLOpBuilder(OpBuilder):
             # extra_cuda_cflags=self.strip_empty_entries(self.nvcc_args()),
             extra_ldflags=self.strip_empty_entries(self.extra_ldflags()),
             verbose=verbose)
+
         build_duration = time.time() - start_build
         if verbose:
             print(f"Time to load {self.name} op: {build_duration} seconds")
-
         '''
         # Reset arch list so we are not silently removing it for other possible use cases
         if torch_arch_list:
             os.environ["TORCH_CUDA_ARCH_LIST"] = torch_arch_list
         '''
-
         return op_module
 
+
 def sycl_kernel_path(code_path):
-    import intel_extension_for_pytorch
-    abs_path = os.path.join(Path(__file__).parent.absolute(), code_path)
-    rel_path = os.path.join("third-party", code_path)
-    print("Copying SYCL kernel file from {} to {}".format(abs_path, rel_path))
-    os.makedirs(os.path.dirname(rel_path), exist_ok=True)
-    shutil.copyfile(abs_path, rel_path)
-    return rel_path
+    from .fused_adam import FusedAdamBuilder
+    import intel_extension_for_pytorch  # noqa: F401
+    abs_source_path = os.path.join(Path(__file__).parent.absolute(), code_path)
+    rel_target_path = os.path.join("third-party", code_path)
+
+    # jit_load mode require absolute path. Use abs path for copy
+    abs_target_path = FusedAdamBuilder().deepspeed_src_path(rel_target_path)
+    import filecmp
+    if (os.path.exists(abs_target_path) and filecmp.cmp(abs_target_path,
+                                                        abs_source_path)):
+        print("skip copy, {} and {} are has the same content".format(
+            abs_source_path,
+            abs_target_path))
+        return os.path.join("deepspeed/ops", rel_target_path)
+    print("Copying SYCL kernel file from {} to {}".format(abs_source_path,
+                                                          abs_target_path))
+    os.makedirs(os.path.dirname(abs_target_path), exist_ok=True)
+    shutil.copyfile(abs_source_path, abs_target_path)
+
+    # prebuild mode paths require relative to the setup.py directory. Use relative path
+    return rel_target_path
 
 
 def sycl_kernel_include(code_path):
-    import intel_extension_for_pytorch
+    import intel_extension_for_pytorch  # noqa: F401
     abs_path = os.path.join(Path(__file__).parent.absolute(), code_path)
     return abs_path
