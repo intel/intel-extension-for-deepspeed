@@ -8,13 +8,6 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'xpu'
         self._communication_backend_name = 'ccl'
-        self.DoubleTensor = torch.xpu.DoubleTensor
-        self.LongTensor = torch.xpu.LongTensor
-        self.FloatTensor = torch.xpu.FloatTensor
-        self.BFloat16Tensor = torch.xpu.BFloat16Tensor
-        self.HalfTensor = torch.xpu.HalfTensor
-        self.IntTensor = torch.xpu.IntTensor
-        self.ByteTensor = torch.xpu.ByteTensor
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -150,8 +143,40 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return True
 
     # Tensor operations
+
+    @property
+    def BFloat16Tensor(self):
+        return torch.xpu.BFloat16Tensor
+
+    @property
+    def ByteTensor(self):
+        return torch.xpu.ByteTensor
+
+    @property
+    def DoubleTensor(self):
+        return torch.xpu.DoubleTensor
+
+    @property
+    def FloatTensor(self):
+        return torch.xpu.FloatTensor
+
+    @property
+    def HalfTensor(self):
+        return torch.xpu.HalfTensor
+
+    @property
+    def IntTensor(self):
+        return torch.xpu.IntTensor
+
+    @property
+    def LongTensor(self):
+        return torch.xpu.LongTensor
+
     def pin_memory(self, tensor):
         return tensor.pin_memory(device=self.current_device_name())
+
+    def op_builder_dir(self):
+        return "intel_extension_for_deepspeed.op_builder"
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
@@ -161,23 +186,33 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return False
 
     def create_op_builder(self, op_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder,  TransformerBuilder, UtilsBuilder
+        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder
         from deepspeed.ops.op_builder import AsyncIOBuilder, SparseAttnBuilder
-        if op_name == "AsyncIOBuilder":
+
+        from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder as AsyncIOBuilderName
+        from deepspeed.ops.op_builder.builder_names import CPUAdagradBuilder as CPUAdagradBuilderName
+        from deepspeed.ops.op_builder.builder_names import CPUAdamBuilder as CPUAdamBuilderName
+        from deepspeed.ops.op_builder.builder_names import FusedAdamBuilder as FusedAdamBuilderName
+        from deepspeed.ops.op_builder.builder_names import QuantizerBuilder as QuantizerBuilderName
+        from deepspeed.ops.op_builder.builder_names import SparseAttnBuilder as SparseAttnBuilderName
+        from deepspeed.ops.op_builder.builder_names import TransformerBuilder as TransformerBuilderName
+        from deepspeed.ops.op_builder.builder_names import UtilsBuilder as UtilsBuilderName
+
+        if op_name == AsyncIOBuilderName:
             return AsyncIOBuilder()
-        elif op_name == "CPUAdagradBuilder":
+        elif op_name == CPUAdagradBuilderName:
             return CPUAdagradBuilder()
-        elif op_name == "CPUAdamBuilder":
+        elif op_name == CPUAdamBuilderName:
             return CPUAdamBuilder()
-        elif op_name == "FusedAdamBuilder":
+        elif op_name == FusedAdamBuilderName:
             return FusedAdamBuilder()
-        elif op_name == "QuantizerBuilder":
+        elif op_name == QuantizerBuilderName:
             return QuantizerBuilder()
-        elif op_name == "SparseAttnBuilder":
+        elif op_name == SparseAttnBuilderName:
             return SparseAttnBuilder()
-        elif op_name == "TransformerBuilder":
+        elif op_name == TransformerBuilderName:
             return TransformerBuilder()
-        elif op_name == "UtilsBuilder":
+        elif op_name == UtilsBuilderName:
             return UtilsBuilder()
         else:
             return None
