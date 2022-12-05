@@ -38,6 +38,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.random
 
     def set_rng_state(self, new_state, device_index=None):
+        if device_index == None :
+            return torch.xpu.set_rng_state(new_state)
         return torch.xpu.set_rng_state(new_state, device_index)
 
     def get_rng_state(self, device_index=None):
