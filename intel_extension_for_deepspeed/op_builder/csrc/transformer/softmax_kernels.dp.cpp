@@ -1,14 +1,15 @@
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
+using namespace sycl;
 #elif __has_include(<CL/sycl.hpp>)
 #include <CL/sycl.hpp>
+using namespace cl::sycl;
 #else
 #error "Unsupported compiler"
 #endif
 #include "custom_sycl_layers.hpp"
 #include "general_kernels.hpp"
 
-using namespace cl::sycl;
 #define MAX_SG_NUM (32)
 // Fused attention + softmax
 template <int tbSize, int blockStride, int tbSeq>

@@ -1,14 +1,15 @@
 #pragma once
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
+using namespace sycl;
 #elif __has_include(<CL/sycl.hpp>)
 #include <CL/sycl.hpp>
+using namespace cl::sycl;
 #else
 #error "Unsupported compiler"
 #endif
 #include <ext/oneapi/experimental/bfloat16.hpp>
 
-using namespace cl::sycl;
 using bf16 = sycl::ext::oneapi::experimental::bfloat16;
 
 int onednn_matmul_ex(sycl::queue* handle,

@@ -1,13 +1,13 @@
 #include "general_kernels.hpp"
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
+using namespace sycl;
 #elif __has_include(<CL/sycl.hpp>)
 #include <CL/sycl.hpp>
+using namespace cl::sycl;
 #else
 #error "Unsupported compiler"
 #endif
-
-using namespace cl::sycl;
 
 constexpr int MAX_SG_NUM = 32;
 constexpr int MAX_SG_NUM1 = MAX_SG_NUM + 1;
