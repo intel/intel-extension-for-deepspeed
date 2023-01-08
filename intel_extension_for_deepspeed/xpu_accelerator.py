@@ -188,8 +188,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return False
 
     def create_op_builder(self, op_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder
-        from deepspeed.ops.op_builder import AsyncIOBuilder, SparseAttnBuilder
+        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, AsyncIOBuilder, SparseAttnBuilder
 
         from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder as AsyncIOBuilderName
         from deepspeed.ops.op_builder.builder_names import CPUAdagradBuilder as CPUAdagradBuilderName

@@ -5,3 +5,5 @@ from .fused_adam import FusedAdamBuilder
 from .transformer import TransformerBuilder
 from .quantizer import QuantizerBuilder
 from .utils import UtilsBuilder
+from .async_io import AsyncIOBuilder
+from .sparse_attn import SparseAttnBuilder
