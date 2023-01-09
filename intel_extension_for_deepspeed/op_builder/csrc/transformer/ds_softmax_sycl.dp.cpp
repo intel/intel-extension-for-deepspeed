@@ -1,6 +1,6 @@
-#include "sycl/common.hpp"
-#include "sycl/context.hpp"
-#include "sycl/softmax.hpp"
+#include "common.hpp"
+#include "context.hpp"
+#include "softmax.hpp"
 
 template <typename T>
 std::vector<torch::Tensor> softmax_forward(int bsz,

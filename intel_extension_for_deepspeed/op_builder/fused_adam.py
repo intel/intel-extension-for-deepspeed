@@ -16,8 +16,8 @@ class FusedAdamBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/adam/sycl/fused_adam_frontend.cpp'),
-            sycl_kernel_path('csrc/adam/sycl/multi_tensor_adam.dp.cpp'),
+            sycl_kernel_path('csrc/adam/fused_adam_frontend.cpp'),
+            sycl_kernel_path('csrc/adam/multi_tensor_adam.dp.cpp'),
         ]
 
     def include_paths(self):

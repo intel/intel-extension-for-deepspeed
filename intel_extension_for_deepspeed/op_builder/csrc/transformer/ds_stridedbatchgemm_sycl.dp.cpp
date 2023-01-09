@@ -1,6 +1,6 @@
-#include "sycl/common.hpp"
-#include "sycl/context.hpp"
-#include "sycl/strided_batch_gemm.hpp"
+#include "common.hpp"
+#include "context.hpp"
+#include "strided_batch_gemm.hpp"
 
 template <typename T>
 std::vector<torch::Tensor> stridedbatchgemm_forward(const int batchSize,

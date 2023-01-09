@@ -12,7 +12,7 @@
 #endif
 
 #include "multi_tensor_apply.dp.hpp"
-#include "sycl/type_shim.hpp"
+#include "type_shim.hpp"
 
 #define BLOCK_SIZE 512
 #define ILP 4

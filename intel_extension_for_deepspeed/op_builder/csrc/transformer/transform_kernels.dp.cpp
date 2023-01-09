@@ -5,7 +5,7 @@
 #else
 #error "Unsupported compiler"
 #endif
-#include "sycl/custom_sycl_layers.hpp"
+#include "custom_sycl_layers.hpp"
 
 #define rows_trans 16
 #define cols_trans 16

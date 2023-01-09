@@ -5,8 +5,8 @@
 #else
 #error "Unsupported compiler"
 #endif
-#include "sycl/custom_sycl_layers.hpp"
-#include "sycl/general_kernels.hpp"
+#include "custom_sycl_layers.hpp"
+#include "general_kernels.hpp"
 
 using namespace cl::sycl;
 #define MAX_SG_NUM (32)

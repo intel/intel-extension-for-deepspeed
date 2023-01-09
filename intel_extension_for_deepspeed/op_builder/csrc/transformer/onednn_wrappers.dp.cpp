@@ -1,4 +1,4 @@
-#include "sycl/onednn_wrappers.hpp"
+#include "onednn_wrappers.hpp"
 #include <oneapi/dnnl/dnnl_sycl.hpp>
 
 template <bool bmm>

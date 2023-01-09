@@ -16,8 +16,8 @@ class CPUAdamBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/adam/sycl/cpu_adam.dp.cpp'),
-            sycl_kernel_path('csrc/adam/sycl/custom_sycl_kernel.dp.cpp'),
+            sycl_kernel_path('csrc/adam/cpu_adam.dp.cpp'),
+            sycl_kernel_path('csrc/adam/custom_sycl_kernel.dp.cpp'),
         ]
 
     def libraries_args(self):

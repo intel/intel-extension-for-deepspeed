@@ -1,6 +1,6 @@
-#include "sycl/common.hpp"
-#include "sycl/context.hpp"
-#include "sycl/gelu.hpp"
+#include "common.hpp"
+#include "context.hpp"
+#include "gelu.hpp"
 
 template <typename T>
 std::vector<torch::Tensor> gelu_forward(int intermediate_size,

@@ -1,7 +1,7 @@
-#include "sycl/common.hpp"
-#include "sycl/context.hpp"
-#include "sycl/custom_sycl_layers.hpp"
-#include "sycl/general_kernels.hpp"
+#include "common.hpp"
+#include "context.hpp"
+#include "custom_sycl_layers.hpp"
+#include "general_kernels.hpp"
 
 template <typename T>
 std::vector<torch::Tensor> transform4d_0213(const torch::Tensor& input,

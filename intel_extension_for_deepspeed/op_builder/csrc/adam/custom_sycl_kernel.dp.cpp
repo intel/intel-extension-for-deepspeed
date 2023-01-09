@@ -5,7 +5,7 @@
 #else
 #error "Unsupported compiler"
 #endif
-#include "sycl/custom_sycl_layers.hpp"
+#include "custom_sycl_layers.hpp"
 
 void param_update_kernel(const float* input,
                          sycl::half* output,

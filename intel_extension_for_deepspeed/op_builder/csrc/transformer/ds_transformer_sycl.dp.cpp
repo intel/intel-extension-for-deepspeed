@@ -1,4 +1,4 @@
-#include "sycl/ds_transformer_sycl.hpp"
+#include "ds_transformer_sycl.hpp"
 #include <torch/extension.h>
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
@@ -12,12 +12,12 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-#include "sycl/Timer.hpp"
-#include "sycl/common.hpp"
-#include "sycl/context.hpp"
-#include "sycl/custom_sycl_layers.hpp"
-#include "sycl/onednn_wrappers.hpp"
-#include "sycl/onemkl_wrappers.hpp"
+#include "Timer.hpp"
+#include "common.hpp"
+#include "context.hpp"
+#include "custom_sycl_layers.hpp"
+#include "onednn_wrappers.hpp"
+#include "onemkl_wrappers.hpp"
 
 static std::unordered_map<int, std::shared_ptr<void>> s_transformer_layers;
 

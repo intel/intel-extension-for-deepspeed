@@ -5,7 +5,7 @@
 #else
 #error "Unsupported compiler"
 #endif
-#include "sycl/cpu_adagrad.hpp"
+#include "cpu_adagrad.hpp"
 #include <math.h>
 #include <omp.h>
 #include <torch/extension.h>
@@ -15,7 +15,7 @@
 #include <unordered_map>
 #include <oneapi/mkl.hpp>
 #include <oneapi/mkl/rng/device.hpp>
-#include "sycl/custom_sycl_layers.hpp"
+#include "custom_sycl_layers.hpp"
 
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;

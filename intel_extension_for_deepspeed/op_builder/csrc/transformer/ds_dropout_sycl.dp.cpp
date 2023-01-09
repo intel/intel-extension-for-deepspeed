@@ -1,6 +1,6 @@
-#include "sycl/common.hpp"
-#include "sycl/context.hpp"
-#include "sycl/dropout.hpp"
+#include "common.hpp"
+#include "context.hpp"
+#include "dropout.hpp"
 
 template <typename T>
 std::vector<torch::Tensor> dropout_forward(float ratio,

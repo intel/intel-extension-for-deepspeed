@@ -1,6 +1,6 @@
-#include "sycl/common.hpp"
-#include "sycl/context.hpp"
-#include "sycl/normalize_layer.hpp"
+#include "common.hpp"
+#include "context.hpp"
+#include "normalize_layer.hpp"
 
 template <typename T>
 std::vector<torch::Tensor> normalize_forward(const int batch,

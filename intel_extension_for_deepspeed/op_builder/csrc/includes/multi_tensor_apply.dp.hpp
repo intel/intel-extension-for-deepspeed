@@ -14,7 +14,7 @@
 #error "Unsupported compiler"
 #endif
 #include "compat.h"
-#include "sycl/context.hpp"
+#include "context.hpp"
 
 #include <assert.h>
 #include <xpu/Stream.h>

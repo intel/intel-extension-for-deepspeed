@@ -1,6 +1,6 @@
-#include "sycl/common.hpp"
-#include "sycl/context.hpp"
-#include "sycl/feed_forward.hpp"
+#include "common.hpp"
+#include "context.hpp"
+#include "feed_forward.hpp"
 
 template <typename T>
 std::vector<torch::Tensor> feedforward_forward(int bsz,

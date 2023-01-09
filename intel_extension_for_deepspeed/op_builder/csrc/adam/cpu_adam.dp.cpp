@@ -1,4 +1,4 @@
-#include "sycl/cpu_adam.hpp"
+#include "cpu_adam.hpp"
 #include <math.h>
 #include <omp.h>
 #include <torch/extension.h>
@@ -15,7 +15,7 @@
 #include <oneapi/mkl/rng/device.hpp>
 #include <type_traits>
 #include <unordered_map>
-#include "sycl/custom_sycl_layers.hpp"
+#include "custom_sycl_layers.hpp"
 
 static std::unordered_map<int, std::shared_ptr<void>> s_optimizers;
 

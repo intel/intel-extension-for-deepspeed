@@ -1,4 +1,4 @@
-#include "sycl/general_kernels.hpp"
+#include "general_kernels.hpp"
 #if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
 #elif __has_include(<CL/sycl.hpp>)
