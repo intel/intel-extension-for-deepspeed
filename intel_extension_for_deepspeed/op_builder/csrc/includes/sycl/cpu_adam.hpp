@@ -3,7 +3,13 @@
 #if (__x86_64__ || __i386__)
 #include <cpuid.h>
 #include <x86intrin.h>
+#if __has_include(<sycl/sycl.hpp>)
+#include <sycl/sycl.hpp>
+#elif __has_include(<CL/sycl.hpp>)
 #include <CL/sycl.hpp>
+#else
+#error "Unsupported compiler"
+#endif
 #endif
 
 #include <stdio.h>

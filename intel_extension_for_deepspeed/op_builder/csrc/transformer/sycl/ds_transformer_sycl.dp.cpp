@@ -1,6 +1,12 @@
 #include "sycl/ds_transformer_sycl.hpp"
 #include <torch/extension.h>
+#if __has_include(<sycl/sycl.hpp>)
+#include <sycl/sycl.hpp>
+#elif __has_include(<CL/sycl.hpp>)
 #include <CL/sycl.hpp>
+#else
+#error "Unsupported compiler"
+#endif
 #include <cmath>
 #include <oneapi/mkl.hpp>
 #include <type_traits>

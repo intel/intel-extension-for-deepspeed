@@ -1,6 +1,12 @@
 #pragma once
 #if (__x86_64__ || __i386__)
+#if __has_include(<sycl/sycl.hpp>)
+#include <sycl/sycl.hpp>
+#elif __has_include(<CL/sycl.hpp>)
 #include <CL/sycl.hpp>
+#else
+#error "Unsupported compiler"
+#endif
 #include <cpuid.h>
 #include <x86intrin.h>
 #endif

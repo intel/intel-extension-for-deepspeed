@@ -1,4 +1,10 @@
+#if __has_include(<sycl/sycl.hpp>)
+#include <sycl/sycl.hpp>
+#elif __has_include(<CL/sycl.hpp>)
 #include <CL/sycl.hpp>
+#else
+#error "Unsupported compiler"
+#endif
 #include "sycl/custom_sycl_layers.hpp"
 
 void param_update_kernel(const float* input,
