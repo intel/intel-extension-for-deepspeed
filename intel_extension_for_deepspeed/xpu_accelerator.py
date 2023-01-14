@@ -191,30 +191,21 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder
         from deepspeed.ops.op_builder import AsyncIOBuilder, SparseAttnBuilder
 
-        from deepspeed.ops.op_builder.builder_names import AsyncIOBuilder as AsyncIOBuilderName
-        from deepspeed.ops.op_builder.builder_names import CPUAdagradBuilder as CPUAdagradBuilderName
-        from deepspeed.ops.op_builder.builder_names import CPUAdamBuilder as CPUAdamBuilderName
-        from deepspeed.ops.op_builder.builder_names import FusedAdamBuilder as FusedAdamBuilderName
-        from deepspeed.ops.op_builder.builder_names import QuantizerBuilder as QuantizerBuilderName
-        from deepspeed.ops.op_builder.builder_names import SparseAttnBuilder as SparseAttnBuilderName
-        from deepspeed.ops.op_builder.builder_names import TransformerBuilder as TransformerBuilderName
-        from deepspeed.ops.op_builder.builder_names import UtilsBuilder as UtilsBuilderName
-
-        if op_name == AsyncIOBuilderName:
+        if op_name == "AsyncIOBuilder":
             return AsyncIOBuilder()
-        elif op_name == CPUAdagradBuilderName:
+        elif op_name == "CPUAdagradBuilder":
             return CPUAdagradBuilder()
-        elif op_name == CPUAdamBuilderName:
+        elif op_name == "CPUAdamBuilder":
             return CPUAdamBuilder()
-        elif op_name == FusedAdamBuilderName:
+        elif op_name == "FusedAdamBuilder":
             return FusedAdamBuilder()
-        elif op_name == QuantizerBuilderName:
+        elif op_name == "QuantizerBuilder":
             return QuantizerBuilder()
-        elif op_name == SparseAttnBuilderName:
+        elif op_name == "SparseAttnBuilder":
             return SparseAttnBuilder()
-        elif op_name == TransformerBuilderName:
+        elif op_name == "TransformerBuilder":
             return TransformerBuilder()
-        elif op_name == UtilsBuilderName:
+        elif op_name == "UtilsBuilder":
             return UtilsBuilder()
         else:
             return None
