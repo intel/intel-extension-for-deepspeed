@@ -60,11 +60,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.default_generators[device_index]
 
     # Streams/Events
-    def Stream(self, device=None, priority=0, **kwargs):
-        return torch.xpu.Stream(device, priority, **kwargs)
-
-    def StreamContext(self, stream):
-        return torch.xpu.StreamContext(stream)
+    @property
+    def Stream(self):
+        return torch.xpu.Stream
 
     def stream(self, stream):
         return torch.xpu.stream(stream)
@@ -78,8 +76,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         # see https://pytorch.org/docs/stable/notes/cuda.html#cuda-streams
         return torch.xpu.current_stream(device_index)
 
-    def Event(self, **kwargs):
-        return torch.xpu.Event(**kwargs)
+    @property
+    def Event(self):
+        return torch.xpu.Event
 
     # Memory management
     def empty_cache(self):
@@ -187,26 +186,34 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         else:
             return False
 
+    # create an instance of op builder and return, name specified by class_name 
     def create_op_builder(self, op_name):
+        builder_class = self.get_op_builder(op_name)
+        if builder_class != None:
+            return builder_class()
+        return None
+
+    # return an op builder class, name specified by class_name
+    def get_op_builder(self, class_name):
         from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder
         from deepspeed.ops.op_builder import AsyncIOBuilder, SparseAttnBuilder
 
         if op_name == "AsyncIOBuilder":
-            return AsyncIOBuilder()
+            return AsyncIOBuilder
         elif op_name == "CPUAdagradBuilder":
-            return CPUAdagradBuilder()
+            return CPUAdagradBuilder
         elif op_name == "CPUAdamBuilder":
-            return CPUAdamBuilder()
+            return CPUAdamBuilder
         elif op_name == "FusedAdamBuilder":
-            return FusedAdamBuilder()
+            return FusedAdamBuilder
         elif op_name == "QuantizerBuilder":
-            return QuantizerBuilder()
+            return QuantizerBuilder
         elif op_name == "SparseAttnBuilder":
-            return SparseAttnBuilder()
+            return SparseAttnBuilder
         elif op_name == "TransformerBuilder":
-            return TransformerBuilder()
+            return TransformerBuilder
         elif op_name == "UtilsBuilder":
-            return UtilsBuilder()
+            return UtilsBuilder
         else:
             return None
 
