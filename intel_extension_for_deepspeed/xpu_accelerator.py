@@ -60,11 +60,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.default_generators[device_index]
 
     # Streams/Events
-    def Stream(self, device=None, priority=0, **kwargs):
-        return torch.xpu.Stream(device, priority, **kwargs)
-
-    def StreamContext(self, stream):
-        return torch.xpu.StreamContext(stream)
+    @property
+    def Stream(self):
+        return torch.xpu.Stream
 
     def stream(self, stream):
         return torch.xpu.stream(stream)
@@ -78,8 +76,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         # see https://pytorch.org/docs/stable/notes/cuda.html#cuda-streams
         return torch.xpu.current_stream(device_index)
 
-    def Event(self, **kwargs):
-        return torch.xpu.Event(**kwargs)
+    @property
+    def Event(self):
+        return torch.xpu.Event
 
     # Memory management
     def empty_cache(self):
@@ -126,10 +125,14 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.is_available()
 
     def range_push(self, msg):
-        return torch.xpu.itt.range_push(msg)
+        # TODO itt is currently not supported yet
+        # return torch.profiler.itt.range_push(msg)
+        return
 
     def range_pop(self):
-        return torch.xpu.itt.range_pop()
+        # TODO itt is currently not supported yet
+        # return torch.profiler.itt.range_pop()
+        return
 
     def lazy_call(self, callback):
         return torch.xpu.lazy_init._lazy_call(callback)
@@ -187,26 +190,35 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         else:
             return False
 
+    # create an instance of op builder and return, name specified by class_name 
     def create_op_builder(self, op_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder
-        from deepspeed.ops.op_builder import AsyncIOBuilder, SparseAttnBuilder
+        builder_class = self.get_op_builder(op_name)
+        if builder_class != None:
+            return builder_class()
+        return None
 
-        if op_name == "AsyncIOBuilder":
-            return AsyncIOBuilder()
-        elif op_name == "CPUAdagradBuilder":
-            return CPUAdagradBuilder()
-        elif op_name == "CPUAdamBuilder":
-            return CPUAdamBuilder()
-        elif op_name == "FusedAdamBuilder":
-            return FusedAdamBuilder()
-        elif op_name == "QuantizerBuilder":
-            return QuantizerBuilder()
-        elif op_name == "SparseAttnBuilder":
-            return SparseAttnBuilder()
-        elif op_name == "TransformerBuilder":
-            return TransformerBuilder()
-        elif op_name == "UtilsBuilder":
-            return UtilsBuilder()
+    # return an op builder class, name specified by class_name
+    def get_op_builder(self, class_name):
+        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder
+        from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
+        from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
+
+        if class_name == "AsyncIOBuilder":
+            return AsyncIOBuilder
+        elif class_name == "CPUAdagradBuilder":
+            return CPUAdagradBuilder
+        elif class_name == "CPUAdamBuilder":
+            return CPUAdamBuilder
+        elif class_name == "FusedAdamBuilder":
+            return FusedAdamBuilder
+        elif class_name == "QuantizerBuilder":
+            return QuantizerBuilder
+        elif class_name == "SparseAttnBuilder":
+            return SparseAttnBuilder
+        elif class_name == "TransformerBuilder":
+            return TransformerBuilder
+        elif class_name == "UtilsBuilder":
+            return UtilsBuilder
         else:
             return None
 
