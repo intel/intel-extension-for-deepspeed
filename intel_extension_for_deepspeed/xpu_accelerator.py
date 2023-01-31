@@ -126,12 +126,12 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     def range_push(self, msg):
         # TODO itt is currently not supported yet
-        # return torch.xpu.itt.range_push(msg)
+        # return torch.profiler.itt.range_push(msg)
         return
 
     def range_pop(self):
         # TODO itt is currently not supported yet
-        # return torch.xpu.itt.range_pop()
+        # return torch.profiler.itt.range_pop()
         return
 
     def lazy_call(self, callback):
