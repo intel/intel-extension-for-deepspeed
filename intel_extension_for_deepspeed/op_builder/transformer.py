@@ -20,26 +20,26 @@ class TransformerBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/sycl/onednn_wrappers.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/onednn_wrappers.dp.cpp'),
             sycl_kernel_path(
-                'csrc/transformer/sycl/ds_transformer_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/onemkl_wrappers.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/transform_kernels.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/ds_gelu_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/gelu_kernels.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/ds_dropout_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/dropout_kernels.dp.cpp'),
+                'csrc/transformer/ds_transformer_sycl.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/onemkl_wrappers.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/transform_kernels.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/ds_gelu_sycl.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/gelu_kernels.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/ds_dropout_sycl.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/dropout_kernels.dp.cpp'),
             sycl_kernel_path(
-                'csrc/transformer/sycl/ds_feedforward_sycl.dp.cpp'),
+                'csrc/transformer/ds_feedforward_sycl.dp.cpp'),
             sycl_kernel_path(
-                'csrc/transformer/sycl/ds_layer_reorder_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/ds_normalize_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/normalize_kernels.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/ds_softmax_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/softmax_kernels.dp.cpp'),
+                'csrc/transformer/ds_layer_reorder_sycl.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/ds_normalize_sycl.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/normalize_kernels.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/ds_softmax_sycl.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/softmax_kernels.dp.cpp'),
             sycl_kernel_path(
-                'csrc/transformer/sycl/ds_stridedbatchgemm_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/sycl/general_kernels.dp.cpp')
+                'csrc/transformer/ds_stridedbatchgemm_sycl.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/general_kernels.dp.cpp')
         ]
 
     def include_paths(self):
