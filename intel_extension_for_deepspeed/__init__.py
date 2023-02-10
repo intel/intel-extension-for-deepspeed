@@ -1,1 +1,1 @@
-from .xpu_accelerator import XPU_Accelerator
+from .xpu_select import XPU_Accelerator

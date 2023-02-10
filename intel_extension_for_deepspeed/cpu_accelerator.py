@@ -4,16 +4,16 @@ import intel_extension_for_pytorch as ipex  # noqa: F401
 import oneccl_bindings_for_pytorch  #noqa: F401
 
 
-# accelerator for Intel GPU
-class _XPU_Accelerator(DeepSpeedAccelerator):
+# accelerator for Intel CPU
+class _CPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
-        self._name = 'xpu'
+        self._name = 'cpu'
         self._communication_backend_name = 'ccl'
 
     # Device APIs
     def device_name(self, device_index=None):
         if device_index == None:
-            return 'xpu'
+            return 'cpu'
         return 'xpu:{}'.format(device_index)
 
     def device(self, device_index=None):
