@@ -18,10 +18,10 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.device(device_index)
 
     def set_device(self, device_index):
-        torch.xpu.set_device(device_index)
+        return
 
     def current_device(self):
-        return torch.xpu.current_device()
+        return 0
 
     def current_device_name(self):
         return 'cpu'
@@ -42,12 +42,10 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.set_rng_state(new_state, device_index)
 
     def get_rng_state(self, device_index=None):
-        if device_index == None:
-            return torch.xpu.get_rng_state()
-        return torch.xpu.get_rng_state(device_index)
+        return torch.get_rng_state()
 
     def manual_seed(self, seed):
-        return torch.xpu.manual_seed(seed)
+        return torch.manual_seed(seed)
 
     def manual_seed_all(self, seed):
         return torch.xpu.manual_seed_all(seed)
@@ -56,7 +54,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.initial_seed(seed)
 
     def default_generator(self, device_index):
-        return torch.xpu.default_generators[device_index]
+        return torch.default_generator
 
     # Streams/Events
     @property
@@ -134,7 +132,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def lazy_call(self, callback):
-        return torch.xpu.lazy_init._lazy_call(callback)
+        return callback()
 
     def communication_backend_name(self):
         return self._communication_backend_name
@@ -222,8 +220,5 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
             return None
 
     def build_extension(self):
-        try:
-            from intel_extension_for_pytorch.xpu.cpp_extension import DpcppBuildExtension
-        except ImportError:
-            from intel_extension_for_pytorch.xpu.utils import DpcppBuildExtension
-        return DpcppBuildExtension
+        from torch.utils.cpp_extension import BuildExtension
+        return BuildExtension
