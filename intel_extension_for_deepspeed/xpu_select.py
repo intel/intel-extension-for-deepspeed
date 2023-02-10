@@ -1,20 +1,25 @@
 import os
-import intel_extension_for_pytorch as ipex  # noqa: F401
-import oneccl_bindings_for_pytorch  #noqa: F401
+import torch
+import intel_extension_for_pytorch as ipex
 
-from xpu_accelerator import _XPU_Accelertor
-from cpu_accelerator import _CPU_Accelertor
+from .xpu_accelerator import _XPU_Accelerator
+from .cpu_accelerator import _CPU_Accelerator
 
 # Choose XPU or CPU accelerator depending on XPU availability
 def XPU_Accelerator():
-    xpu = _XPU_Accelerator()
+    ipex_for_xpu = False
+    ipex_for_cpu = False
 
-    # Environment variable has higher priority than device installed on the system
-    # This allows prebuild on a machine that is different from target machine
-    force_xpu_backend = os.environ['IDEX_FROCE_XPU_BACKEND']
-    force_cpu_backend = os.environ['IDEX_FROCE_CPU_BACKEND']
+    if hasattr(ipex, 'xpu'):
+        ipex_for_xpu = True
+    elif hasattr(ipex, 'cpu'):
+        ipex_for_cpu = True
 
-    if force_xpu_backend == '1' or (not force_cpu_backend == '1' and xpu.is_available()):
+    print (ipex_for_xpu)
+    print (ipex_for_cpu)
+
+    if ipex_for_xpu:
+        xpu = _XPU_Accelerator()
         print ("XPU backend selected")
         return xpu
     else:
