@@ -61,7 +61,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
     # Streams/Events
     @property
     def Stream(self):
-        return None
+        return
 
     def stream(self, stream):
         return torch.xpu.stream(stream)
@@ -121,7 +121,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.amp
 
     def is_available(self):
-        return torch.xpu.is_available()
+        return True
 
     def range_push(self, msg):
         # TODO itt is currently not supported yet
@@ -150,31 +150,31 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     @property
     def BFloat16Tensor(self):
-        return torch.xpu.BFloat16Tensor
+        return torch.BFloat16Tensor
 
     @property
     def ByteTensor(self):
-        return torch.xpu.ByteTensor
+        return torch.ByteTensor
 
     @property
     def DoubleTensor(self):
-        return torch.xpu.DoubleTensor
+        return torch.DoubleTensor
 
     @property
     def FloatTensor(self):
-        return torch.xpu.FloatTensor
+        return torch.FloatTensor
 
     @property
     def HalfTensor(self):
-        return torch.xpu.HalfTensor
+        return torch.HalfTensor
 
     @property
     def IntTensor(self):
-        return torch.xpu.IntTensor
+        return torch.IntTensor
 
     @property
     def LongTensor(self):
-        return torch.xpu.LongTensor
+        return torch.LongTensor
 
     def pin_memory(self, tensor):
         return tensor.pin_memory(device=self.current_device_name())
