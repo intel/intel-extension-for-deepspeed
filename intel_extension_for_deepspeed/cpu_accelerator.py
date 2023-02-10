@@ -12,9 +12,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     # Device APIs
     def device_name(self, device_index=None):
-        if device_index == None:
-            return 'cpu'
-        return 'xpu:{}'.format(device_index)
+        return 'cpu'
 
     def device(self, device_index=None):
         return torch.xpu.device(device_index)
@@ -26,13 +24,13 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.current_device()
 
     def current_device_name(self):
-        return 'xpu:{}'.format(torch.xpu.current_device())
+        return 'cpu'
 
     def device_count(self):
-        return torch.xpu.device_count()
+        return 1
 
     def synchronize(self, device_index=None):
-        return torch.xpu.synchronize(device_index)
+        return
 
     # RNG APIs
     def random(self):
@@ -63,7 +61,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
     # Streams/Events
     @property
     def Stream(self):
-        return torch.xpu.Stream
+        return None
 
     def stream(self, stream):
         return torch.xpu.stream(stream)
@@ -79,7 +77,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     @property
     def Event(self):
-        return torch.xpu.Event
+        return None
 
     # Memory management
     def empty_cache(self):

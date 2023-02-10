@@ -15,15 +15,10 @@ def XPU_Accelerator():
     elif hasattr(ipex, 'cpu'):
         ipex_for_cpu = True
 
-    print (ipex_for_xpu)
-    print (ipex_for_cpu)
-
     if ipex_for_xpu:
         xpu = _XPU_Accelerator()
-        print ("XPU backend selected")
         return xpu
     else:
         cpu = _CPU_Accelerator()
-        print ("CPU backend selected")
         return cpu
 
