@@ -32,5 +32,5 @@ a.	python -m pip install oneccl_bind_pt==1.13 -f https://developer.intel.com/ipe
     `copy gpt2-merges.txt and gpt2-vocab.json to Megatron-DeepSpeed directory (the parent directory of dataset)`
     `Modify this line https://github.com/microsoft/Megatron-DeepSpeed/blob/main/tools/generate_samples_gpt.py#L160 to turn off kernel injection.`
 7.	Run this command from Megatron-DeepSpeed:
-    `Examples/generate_text.sh`
+    `examples/generate_text.sh --load dataset/checkpoints/gpt2-345m/release/mp_rank_00/model_optim_rng.pt`
 
