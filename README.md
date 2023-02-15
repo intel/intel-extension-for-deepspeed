@@ -27,10 +27,12 @@ a.	python -m pip install intel_extension_for_pytorch -f https://developer.intel.
 a.	python -m pip install oneccl_bind_pt==1.13 -f https://developer.intel.com/ipex-whl-stable-cpu
 5.	Clone https://github.com/delock/Megatron-DeepSpeed branch: cpu-inference
 6.	Under Megatron-DeepSpeed/dataset, download data with these commands:
-    `bash download_vocab.sh`
-    `bash download_ckpt.sh     # remember install unzip before run this command`
-    `copy gpt2-merges.txt, gpt2-vocab.json and checkpoints/ to Megatron-DeepSpeed directory (the parent directory of dataset)`
-    `Modify this line https://github.com/microsoft/Megatron-DeepSpeed/blob/main/tools/generate_samples_gpt.py#L160 to turn off kernel injection.`
+    ```
+    bash download_vocab.sh
+    bash download_ckpt.sh     # remember install unzip before run this command
+    copy gpt2-merges.txt, gpt2-vocab.json and checkpoints/ to Megatron-DeepSpeed directory (the parent directory of dataset/)
+    Modify this line https://github.com/microsoft/Megatron-DeepSpeed/blob/main/tools/generate_samples_gpt.py#L160 to turn off kernel injection.
+    ```
 7.	Run this command from Megatron-DeepSpeed:
     `examples/generate_text.sh`
 
