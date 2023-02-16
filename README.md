@@ -23,13 +23,14 @@ DeepSpeed would automatically use Intel Extension for DeepSpeed when it is insta
 ```
 git clone https://github.com/intel/intel-extension-for-deepspeed 
 cd intel-extension-for-deepspeed
-checkout cpu-backend
+git checkout cpu-backend
 python setup.py develop
-```    
+```
 2.  Clone DeepSpeed
 ```
-git clone https://github.com/microsoft/DeepSpeed
-cd DeepSpeed
+git clone https://github.com/delock/DeepSpeedSYCLSupport
+cd DeepSpeedSYCLSupport
+git checkout gma/bf16_kernel
 python -m pip install -r requirements/requirements.txt
 python setup.py develop
 ```
@@ -43,6 +44,7 @@ python setup.py develop
 ```
 git clone https://github.com/delock/Megatron-DeepSpeed
 cd Megatron-DeepSpeed
+git checkout cpu-inference
 python -m pip install -r requirements.txt
 ```
 7.	Under Megatron-DeepSpeed/dataset, download data with these commands:
