@@ -1,6 +1,6 @@
 import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
-#import intel_extension_for_pytorch as ipex #noqa: F401
+import intel_extension_for_pytorch as ipex #noqa: F401
 import oneccl_bindings_for_pytorch  #noqa: F401
 
 
@@ -178,7 +178,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return tensor.pin_memory(device=self.current_device_name())
 
     def op_builder_dir(self):
-        return "intel_extension_for_deepspeed.op_builder"
+        return "intel_extension_for_deepspeed.op_builder.cpu"
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
@@ -196,26 +196,10 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder
-        from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
-        from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
+        from intel_extension_for_deepspeed.op_builder.cpu import InferenceBuilder
 
-        if class_name == "AsyncIOBuilder":
-            return AsyncIOBuilder
-        elif class_name == "CPUAdagradBuilder":
-            return CPUAdagradBuilder
-        elif class_name == "CPUAdamBuilder":
-            return CPUAdamBuilder
-        elif class_name == "FusedAdamBuilder":
-            return FusedAdamBuilder
-        elif class_name == "QuantizerBuilder":
-            return QuantizerBuilder
-        elif class_name == "SparseAttnBuilder":
-            return SparseAttnBuilder
-        elif class_name == "TransformerBuilder":
-            return TransformerBuilder
-        elif class_name == "UtilsBuilder":
-            return UtilsBuilder
+        if class_name == "InferenceBuilder":
+            return InferenceBuilder
         else:
             return None
 

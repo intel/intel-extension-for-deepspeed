@@ -182,7 +182,7 @@ class _XPU_Accelerator(DeepSpeedAccelerator):
         return tensor.pin_memory(device=self.current_device_name())
 
     def op_builder_dir(self):
-        return "intel_extension_for_deepspeed.op_builder"
+        return "intel_extension_for_deepspeed.op_builder.xpu"
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)

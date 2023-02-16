@@ -1,6 +1,6 @@
 import os
 import torch
-#import intel_extension_for_pytorch
+import intel_extension_for_pytorch
 
 # Choose XPU or CPU accelerator depending on XPU availability
 def XPU_Accelerator():
