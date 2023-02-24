@@ -133,6 +133,7 @@ void create_comms()
     //CCLCHECK(cclCommDestroy(_world_ccl_comm));
 }
 
+/*
 py::object get_world_group() {
     int world_size = get_world_size(0);
     std::vector<int> ranks(world_size);
@@ -140,6 +141,7 @@ py::object get_world_group() {
     py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
     return ProcessGroup(0, ranks);
 }
+*/
 
 void _print_comm_number() { std::cout << "Number of Sub-Comms:" << _ccl_comms.size() + 1 << "\n"; }
 
@@ -296,6 +298,7 @@ int next_unique_val(std::set<int> s) {
     }
 }
 
+/*
 void test_set() {
     std::set<int> val1 = {6, 5, 10, 1};
     std::set<int> val2 = {};
@@ -305,7 +308,9 @@ void test_set() {
         std::cout << next_unique_val(val4) << std::endl;
     }
 }
+*/
 
+/*
 py::object new_group(std::vector<int> ranks) {
     //std::cout << "RANK: " << get_rank() << " COMM_ID: " << comm_id << " COLOR: " << color << std::endl;
     int comm_id = next_unique_val(_comm_ids);
@@ -315,6 +320,7 @@ py::object new_group(std::vector<int> ranks) {
     py::object newPG = ProcessGroup(comm_id, ranks);
     return newPG;
 }
+*/
 
 
 cclComm_t _get_comm_from_group(py::object group) {
@@ -350,9 +356,13 @@ void broadcast(torch::Tensor& data, int src, bool block, py::object group, bool 
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
+    m.def("getCclId", &getCclId, "Get Unique CCL ID");
+    m.def("initialize", &initialize, "ccl initialize");
+    m.def("finalize", &finalize, "ccl finalize");
+    m.def("all_reduce", &all_reduce, "ccl all_reduce");
+    m.def("barrier", &barrier, "barrier");
     //m.def("send", &send, "ccl send");
     //m.def("recv", &recv, "ccl recv");
-    m.def("all_reduce", &all_reduce, "ccl all_reduce");
     //m.def("broadcast", &broadcast, "ccl broadcast");
     //m.def("all_to_all_single", &all_to_all_single, "ccl alltoall");
     //m.def("all_toall_list", &all_to_all, "ccl alltoall list");
@@ -360,16 +370,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     //m.def("all_gather", &all_gather, "ccl all_gather");
     //m.def("reduce", &reduce, "ccl reduce");
     //m.def("reduce_scatter", &reduce_scatter, "ccl reduce scatter");
-    m.def("initialize", &initialize, "ccl initialize");
-    m.def("finalize", &finalize, "ccl finalize");
-    m.def("getCclId", &getCclId, "Get Unique CCL ID");
-    m.def("get_rank", &get_rank, "get rank");
-    m.def("barrier", &barrier, "barrier");
-    m.def("get_world_size", &get_world_size, "get world size");
-    m.def("create_comm_group", &create_comm_group, "manually create comm group");
-    m.def("test_set", &test_set, "manually create comm group");
-    m.def("new_group", &new_group, "automatically create comm group");
-    m.def("get_world_group", &get_world_group, "Returns the WORLD process group");
+    //m.def("get_rank", &get_rank, "get rank");
+    //m.def("get_world_size", &get_world_size, "get world size");
+    //m.def("create_comm_group", &create_comm_group, "manually create comm group");
+    //m.def("test_set", &test_set, "manually create comm group");
+    //m.def("new_group", &new_group, "automatically create comm group");
+    //m.def("get_world_group", &get_world_group, "Returns the WORLD process group");
 }
 
 } // namespace ccl
