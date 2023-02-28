@@ -196,10 +196,12 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        from intel_extension_for_deepspeed.op_builder.cpu import InferenceBuilder
+        from intel_extension_for_deepspeed.op_builder.cpu import InferenceBuilder, CCLCommBuilder
 
         if class_name == "InferenceBuilder":
             return InferenceBuilder
+        if class_name == "CCLCommBuilder":
+            return CCLCommBuilder
         else:
             return None
 

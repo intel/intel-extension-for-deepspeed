@@ -1,5 +1,8 @@
-#include <ccl.h>
 #include <torch/extension.h>
+
+#include <oneapi/ccl.hpp>
+#include <mpi.h>
+#if 0
 #include <chrono>
 #include <pybind11/embed.h>
 namespace py = pybind11;
@@ -23,9 +26,34 @@ namespace py = pybind11;
             exit(EXIT_FAILURE);                                                                  \
         }                                                                                        \
     } while (0)
+#endif
 
-namespace ccl {
+#define MPICHECK(cmd)                                                        \
+    do {                                                                     \
+        int e = cmd;                                                         \
+        if (e != MPI_SUCCESS) {                                              \
+            printf("Failed: MPI error %s:%d '%d'\n", __FILE__, __LINE__, e); \
+            exit(EXIT_FAILURE);                                              \
+        }                                                                    \
+    } while (0)
 
+bool is_initialized = 0;
+void init_ccl(void)
+{
+    if (is_initialized) return;
+    ccl::init();
+    MPI_Init(NULL, NULL);
+}
+
+int get_rank(int group = 0)
+{
+    init_ccl();
+    int world_rank;
+    MPICHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
+    return world_rank;
+}
+
+#if 0
 void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color);
 cclComm_t _get_comm_from_group(py::object group);
 
@@ -353,14 +381,18 @@ void broadcast(torch::Tensor& data, int src, bool block, py::object group, bool 
     //if (async_op) { SynchComp(); }
 }
 */
+#endif
+
+void foo(void){}
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("getCclId", &getCclId, "Get Unique CCL ID");
-    m.def("initialize", &initialize, "ccl initialize");
-    m.def("finalize", &finalize, "ccl finalize");
-    m.def("all_reduce", &all_reduce, "ccl all_reduce");
-    m.def("barrier", &barrier, "barrier");
+    //m.def("getCclId", &getCclId, "Get Unique CCL ID");
+    //m.def("initialize", &initialize, "ccl initialize");
+    //m.def("finalize", &finalize, "ccl finalize");
+    //m.def("all_reduce", &all_reduce, "ccl all_reduce");
+    //m.def("barrier", &barrier, "barrier");
+    m.def("foo", &foo, "Placeholder function");
     //m.def("send", &send, "ccl send");
     //m.def("recv", &recv, "ccl recv");
     //m.def("broadcast", &broadcast, "ccl broadcast");
@@ -370,12 +402,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     //m.def("all_gather", &all_gather, "ccl all_gather");
     //m.def("reduce", &reduce, "ccl reduce");
     //m.def("reduce_scatter", &reduce_scatter, "ccl reduce scatter");
-    //m.def("get_rank", &get_rank, "get rank");
+    m.def("get_rank", &get_rank, "get rank");
     //m.def("get_world_size", &get_world_size, "get world size");
     //m.def("create_comm_group", &create_comm_group, "manually create comm group");
     //m.def("test_set", &test_set, "manually create comm group");
     //m.def("new_group", &new_group, "automatically create comm group");
     //m.def("get_world_group", &get_world_group, "Returns the WORLD process group");
 }
-
-} // namespace ccl
