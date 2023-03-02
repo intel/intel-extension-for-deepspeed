@@ -26,5 +26,5 @@ class CCLCommBuilder(CPUOpBuilder):
         return super().is_compatible(verbose)
 
     def extra_ldflags(self):
-        return []
+        return ['-lccl']
     #endif
