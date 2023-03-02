@@ -40,6 +40,13 @@ python setup.py develop
 `python -m pip install intel_extension_for_pytorch -f https://developer.intel.com/ipex-whl-stable-cpu`
 5.	Install torch-ccl (CPU version)
 `python -m pip install oneccl_bind_pt==1.13 -f https://developer.intel.com/ipex-whl-stable-cpu`
+6.      Install oneCCL (CPU version)
+This step allows DeepSpeed to use CCL_Backend as communication backend, which kernel is implemented in CPU part
+Install oneCCL following https://github.com/oneapi-src/oneCCL#installation
+Then get oneCCL build environment by execute
+```
+$ source <install_dir>/env/setvars.sh
+```
 
 ### Run Megatron-DeepSpeed text generation task
 1. Clone https://github.com/delock/Megatron-DeepSpeed branch: cpu-inference
@@ -59,3 +66,5 @@ bash download_ckpt.sh     # remember install unzip before run this command
 5. Run this command from Megatron-DeepSpeed:
 `echo Hiking in nature is | examples/generate_text.sh`
 
+### Run model inference with AutoTP on CPU
+To be added
