@@ -199,9 +199,8 @@ void create_comms()
         }
     } else {
         auto attr = ccl::create_kvs_attr();
-        std::cout << __FILE__ << ":" <<__LINE__ << " need to get MASTER_ADDR and MASTER_PORT in a programmable way" << std::endl;
-        //attr.set<ccl::kvs_attr_id::ip_port>(ccl::string_class("127.0.0.1_29601"));
-        attr.set<ccl::kvs_attr_id::ip_port>(ccl::string_class("10.45.76.25_10000"));
+        auto ip_port = std::string(std::getenv("MASTER_ADDR")) + "_" + std::string(std::getenv("MASTER_PORT"));
+        attr.set<ccl::kvs_attr_id::ip_port>(ccl::string_class(ip_port));
         if (create_kvs_by_attr(attr, kvs) != KVS_CREATE_SUCCESS) {
             std::cout << "can not create kvs by attr" << std::endl;
         }
@@ -401,8 +400,8 @@ void all_reduce(torch::Tensor& data, py::object op, bool block, py::object group
                             _get_comm_from_group(group)).wait());
 }
 
-void barrier() {
-    CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
+void barrier(py::object group, bool async_op) {
+    CCLCHECK(ccl::barrier(_get_comm_from_group(group)).wait());
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
