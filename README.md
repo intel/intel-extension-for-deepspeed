@@ -30,7 +30,7 @@ python setup.py develop
 ```
 git clone https://github.com/delock/DeepSpeedSYCLSupport
 cd DeepSpeedSYCLSupport
-git checkout gma/bf16_kernel
+git checkout gma/cpu_support
 python -m pip install -r requirements/requirements.txt
 python setup.py develop
 ```
