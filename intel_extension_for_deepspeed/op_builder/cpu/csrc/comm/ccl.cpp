@@ -1,7 +1,6 @@
 #include <torch/extension.h>
 
 #include <oneapi/ccl.hpp>
-#include "store.hpp"
 #include <mpi.h>
 #if 0
 #include <chrono>
@@ -286,7 +285,6 @@ std::string getCclId()
     // return id;
 }
 
-void barrier() { MPICHECK(MPI_Barrier(MPI_COMM_WORLD)); }
 
 /*
 py::object get_world_group() {
@@ -367,6 +365,10 @@ ccl::reduction get_ccl_reduce_op(py::object op, at::Tensor& input)
     return ccl_op;
 }
 
+ccl::communicator& _get_comm_from_group() {
+    return _ccl_comms[0];
+}
+
 ccl::communicator& _get_comm_from_group(py::object group) {
     if (group == Py_None) {
         return _ccl_comms[0];
@@ -399,13 +401,17 @@ void all_reduce(torch::Tensor& data, py::object op, bool block, py::object group
                             _get_comm_from_group(group)).wait());
 }
 
+void barrier() {
+    CCLCHECK(ccl::barrier(_get_comm_from_group()).wait());
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     //m.def("getCclId", &getCclId, "Get Unique CCL ID");
     m.def("initialize", &initialize, "ccl initialize");
     //m.def("finalize", &finalize, "ccl finalize");
     m.def("all_reduce", &all_reduce, "ccl all_reduce");
-    //m.def("barrier", &barrier, "barrier");
+    m.def("barrier", &barrier, "barrier");
     //m.def("send", &send, "ccl send");
     //m.def("recv", &recv, "ccl recv");
     m.def("broadcast", &broadcast, "ccl broadcast");
