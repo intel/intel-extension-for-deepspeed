@@ -1,15 +1,13 @@
-# Intel Extension for DeepSpeed
-Intel Extension for DeepSpeed is an extension that brings Intel GPU (XPU) support to DeepSpeed(https://github.com/Microsoft/DeepSpeed).  It implements DeepSpeed Accelerator Interface as defined in https://github.com/microsoft/DeepSpeed/pull/2471.
-
-Intel Extension for DeepSpeed comes with the following components:
+# Intel® Extension for DeepSpeed*
+Intel® Extension for DeepSpeed* is an extension that brings Intel GPU (XPU) support to DeepSpeed(https://github.com/Microsoft/DeepSpeed). It comes with the following components:
 1. DeepSpeed Accelerator Interface implementation
 2. DeepSpeed op builders implmentation for XPU
 3. DeepSpeed op builder kernel code
 
-DeepSpeed would automatically use Intel Extension for DeepSpeed when it is installed as a python package.   After installation, models ported for DeepSpeed Accelerator Interface that run on DeepSpeed as in https://github.com/microsoft/DeepSpeed/pull/2471 could run on Intel GPU device.
+DeepSpeed would automatically use Intel® Extension for DeepSpeed* when it is installed as a python package.   After installation, models ported for DeepSpeed Accelerator Interface that run on DeepSpeed could run on Intel GPU device.
 
 Usage:
-1. Install Intel Extension for DeepSpeed
+1. Install Intel® Extension for DeepSpeed*
 
 `python setup.py install`
 
