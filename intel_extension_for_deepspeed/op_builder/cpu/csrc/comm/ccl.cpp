@@ -397,7 +397,29 @@ void all_reduce(torch::Tensor& data, py::object op, bool block, py::object group
                             data.numel(),
                             get_ccl_datatype(data.scalar_type()),
                             get_ccl_reduce_op(op, data),
-                            _get_comm_from_group(group)).wait());
+                            _get_comm_from_group(group)
+                            ).wait());
+}
+
+//TODO: implement torch's async_op behavior, document it.
+void all_reduce_caching(torch::Tensor& data, py::object op, std::string match_id, bool block, py::object group, bool async_op)
+{
+    ccl::allreduce_attr attr = ccl::default_allreduce_attr;
+    auto match_str = ccl::v1::string(match_id);
+    attr.template set<ccl::operation_attr_id::to_cache>(true);
+    attr.template set<ccl::operation_attr_id::match_id>(match_str);
+    //To control this, use operation attribute and set true value for to_cache field and unique string (for example, tensor name) for match_id field.
+    //Note that:
+    //  match_id should be the same for a specific communication operation across all ranks.
+    //  If the same tensor is a part of different communication operations, match_id should have different values for each of these operations.
+    CCLCHECK(ccl::allreduce(data.data_ptr(),
+                            data.data_ptr(),
+                            data.numel(),
+                            get_ccl_datatype(data.scalar_type()),
+                            get_ccl_reduce_op(op, data),
+                            _get_comm_from_group(group),
+                            attr
+                            ).wait());
 }
 
 void barrier(py::object group, bool async_op) {
@@ -410,6 +432,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("initialize", &initialize, "ccl initialize");
     //m.def("finalize", &finalize, "ccl finalize");
     m.def("all_reduce", &all_reduce, "ccl all_reduce");
+    m.def("all_reduce_caching", &all_reduce_caching, "ccl all_reduce with caching");
     m.def("barrier", &barrier, "barrier");
     //m.def("send", &send, "ccl send");
     //m.def("recv", &recv, "ccl recv");
