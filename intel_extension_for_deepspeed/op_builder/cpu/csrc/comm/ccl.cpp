@@ -380,7 +380,7 @@ ccl::communicator& _get_comm_from_group(py::object group) {
     }
 }
 
-void broadcast(torch::Tensor& data, int src, bool block, py::object group, bool async_op)
+void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
 {
     CCLCHECK(ccl::broadcast(data.data_ptr(),
                             data.numel(),
@@ -390,7 +390,7 @@ void broadcast(torch::Tensor& data, int src, bool block, py::object group, bool 
 }
 
 //TODO: implement torch's async_op behavior, document it.
-void all_reduce(torch::Tensor& data, py::object op, bool block, py::object group, bool async_op)
+void all_reduce(torch::Tensor& data, py::object op, py::object group, bool async_op)
 {
     CCLCHECK(ccl::allreduce(data.data_ptr(),
                             data.data_ptr(),
