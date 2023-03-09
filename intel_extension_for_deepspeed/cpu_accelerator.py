@@ -14,7 +14,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return 'cpu'
 
     def device(self, device_index=None):
-        return torch.xpu.device(device_index)
+        return None
 
     def set_device(self, device_index):
         return
@@ -33,7 +33,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     # RNG APIs
     def random(self):
-        return torch.xpu.random
+        return torch.random
 
     def set_rng_state(self, new_state, device_index=None):
         if device_index == None :
@@ -47,10 +47,10 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         return torch.manual_seed(seed)
 
     def manual_seed_all(self, seed):
-        return torch.xpu.manual_seed_all(seed)
+        return torch.manual_seed(seed)
 
     def initial_seed(self, seed):
-        return torch.xpu.initial_seed(seed)
+        return torch.initial_seed(seed)
 
     def default_generator(self, device_index):
         return torch.default_generator
@@ -58,19 +58,17 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
     # Streams/Events
     @property
     def Stream(self):
-        return
+        return None
 
     def stream(self, stream):
-        return torch.xpu.stream(stream)
+        from deepspeed.runtime.utils import noop_decorator
+        return noop_decorator
 
     def current_stream(self, device_index=None):
-        return torch.xpu.current_stream(device_index)
+        return None
 
     def default_stream(self, device_index=None):
-        # torch.xpu does not support the sync behavior of default stream as cuda
-        # use current_stream as workaround
-        # see https://pytorch.org/docs/stable/notes/cuda.html#cuda-streams
-        return torch.xpu.current_stream(device_index)
+        return None
 
     @property
     def Event(self):
@@ -115,7 +113,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     # Misc
     def amp(self):
-        return torch.xpu.amp
+        return None
 
     def is_available(self):
         return True
@@ -181,7 +179,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     def on_accelerator(self, tensor):
         device_str = str(tensor.device)
-        if device_str.startswith('xpu:'):
+        if device_str.startswith('cpu'):
             return True
         else:
             return False
