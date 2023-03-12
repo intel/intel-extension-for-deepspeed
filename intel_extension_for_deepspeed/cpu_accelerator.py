@@ -1,6 +1,7 @@
 import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
 import oneccl_bindings_for_pytorch  #noqa: F401
+import psutil
 
 
 # accelerator for Intel CPU
@@ -8,6 +9,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'cpu'
         self._communication_backend_name = 'ccl'
+        self.max_mem = psutil.Process().memory_info().rss
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -76,40 +78,57 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     # Memory management
     def empty_cache(self):
-        return torch.xpu.empty_cache()
+        return
+
+    def get_rss(self):
+        mem = psutil.Process().memory_info().rss
+        if mem > self.max_mem:
+            self.max_mem = mem
+        return mem
+
+    def reset_rss(self):
+        mem = psutil.Process().memory_info().rss
+        self.max_mem = mem
+        return mem
 
     def memory_allocated(self, device_index=None):
-        return torch.xpu.memory_allocated(device_index)
+        return self.get_rss()
 
     def max_memory_allocated(self, device_index=None):
-        return torch.xpu.max_memory_allocated(device_index)
+        self.get_rss()
+        return self.max_mem
 
     def reset_max_memory_allocated(self, device_index=None):
-        return torch.xpu.reset_max_memory_allocated(device_index)
+        self.reset_rss()
+        return
 
     def memory_cached(self, device_index=None):
-        return torch.xpu.memory_reserved(device_index)
+        return self.get_rss()
 
     def max_memory_cached(self, device_index=None):
-        return torch.xpu.max_memory_reserved(device_index)
+        self.get_rss()
+        return self.max_mem
 
     def reset_max_memory_cached(self, device_index=None):
-        return torch.xpu.reset_max_memory_reserved(device_index)
+        self.reset_rss()
+        return
 
     def memory_stats(self, device_index=None):
-        return torch.xpu.memory_stats(device_index)
+        return self.get_rss()
 
     def reset_peak_memory_stats(self, device_index=None):
-        return torch.xpu.reset_peak_memory_stats(device_index)
+        self.reset_rss()
+        return
 
     def memory_reserved(self, device_index=None):
-        return torch.xpu.memory_reserved(device_index)
+        return self.get_rss()
 
     def max_memory_reserved(self, device_index=None):
-        return torch.xpu.max_memory_reserved(device_index)
+        self.get_rss()
+        return self.max_mem
 
     def total_memory(self, device_index=None):
-        return torch.xpu.get_device_properties(device_index).total_memory
+        return psutil.virtual_memory().total
 
     # Misc
     def amp(self):
