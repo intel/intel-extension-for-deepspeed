@@ -11,6 +11,9 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
         self._communication_backend_name = 'ccl'
         self.max_mem = psutil.Process().memory_info().rss
 
+    def is_synchronized_device(sef):
+        return True
+
     # Device APIs
     def device_name(self, device_index=None):
         return 'cpu'
