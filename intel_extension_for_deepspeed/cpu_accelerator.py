@@ -135,7 +135,7 @@ class _CPU_Accelerator(DeepSpeedAccelerator):
 
     # Misc
     def amp(self):
-        return None
+        return torch.cpu.amp
 
     def is_available(self):
         return True
