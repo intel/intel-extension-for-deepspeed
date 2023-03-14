@@ -1,7 +1,7 @@
 #include <torch/extension.h>
 
 #include <oneapi/ccl.hpp>
-#include <mpi.h>
+//#include <mpi.h>
 #if 0
 #include <chrono>
 #include <pybind11/embed.h>
@@ -55,9 +55,11 @@ void init_ccl(int rank, int size)
     if (is_initialized) return;
     ccl::init();
     if (use_mpi) {
+        #if 0
         MPI_Init(NULL, NULL);
         MPICHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
         MPICHECK(MPI_Comm_size(MPI_COMM_WORLD, &world_size));
+        #endif
     } else {
         world_rank = rank;
         world_size = size;
@@ -189,6 +191,7 @@ void create_comms()
     ccl::shared_ptr_class<ccl::kvs> kvs;
     ccl::kvs::address_type main_addr;
     if (use_mpi) {
+        #if 0
         if (rank == 0) {
             kvs = ccl::create_main_kvs();
             main_addr = kvs->get_address();
@@ -197,6 +200,7 @@ void create_comms()
             MPI_Bcast((void*)main_addr.data(), main_addr.size(), MPI_BYTE, 0, MPI_COMM_WORLD);
             kvs = ccl::create_kvs(main_addr);
         }
+        #endif
     } else {
         auto attr = ccl::create_kvs_attr();
         auto ip_port = std::string(std::getenv("MASTER_ADDR")) + "_" + std::string(std::getenv("MASTER_PORT"));
