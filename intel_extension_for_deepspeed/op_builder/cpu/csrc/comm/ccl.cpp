@@ -24,6 +24,7 @@ std::set<int> _colors;
 //std::unordered_map<int, ccl::communicator> _ccl_comms;
 ccl::vector_class<ccl::communicator> _ccl_comms;
 void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color);
+void create_comms();
 
 #define MPICHECK(cmd)                                                        \
     do {                                                                     \
@@ -49,17 +50,32 @@ bool use_mpi = 0;
 int world_rank = -1;
 int world_size = -1;
 
-void initialize(int rank, int size)
+void init_ccl(int rank, int size)
 {
     if (is_initialized) return;
-    world_size = size;
-    world_rank = rank;
+    ccl::init();
+    if (use_mpi) {
+        #if 0
+        MPI_Init(NULL, NULL);
+        MPICHECK(MPI_Comm_rank(MPI_COMM_WORLD, &world_rank));
+        MPICHECK(MPI_Comm_size(MPI_COMM_WORLD, &world_size));
+        #endif
+    } else {
+        world_rank = rank;
+        world_size = size;
+    }
     is_initialized = 1;
-    _ccl_comms.emplace_back(ccl::preview::create_communicator());
+    create_comms();
+}
+
+void initialize(int rank, int size)
+{
+    init_ccl(rank, size);
 }
 
 int get_rank(int group = 0)
 {
+    init_ccl(-1, -1);
     return world_rank;
 }
 
@@ -160,6 +176,50 @@ ccl::datatype get_ccl_datatype(c10::ScalarType type)
     }
     return ccl_type;
 }
+
+int create_kvs_by_attr(ccl::kvs_attr attr, ccl::shared_ptr_class<ccl::kvs>& kvs) {
+    kvs = ccl::create_main_kvs(attr);
+    return KVS_CREATE_SUCCESS;
+}
+
+void create_comms()
+{
+    //cclUniqueId cclID;
+    int rank = get_rank(0);
+    int size = get_world_size(0);
+
+    ccl::shared_ptr_class<ccl::kvs> kvs;
+    ccl::kvs::address_type main_addr;
+    if (use_mpi) {
+        #if 0
+        if (rank == 0) {
+            kvs = ccl::create_main_kvs();
+            main_addr = kvs->get_address();
+            MPI_Bcast((void*)main_addr.data(), main_addr.size(), MPI_BYTE, 0, MPI_COMM_WORLD);
+        } else {
+            MPI_Bcast((void*)main_addr.data(), main_addr.size(), MPI_BYTE, 0, MPI_COMM_WORLD);
+            kvs = ccl::create_kvs(main_addr);
+        }
+        #endif
+    } else {
+        auto attr = ccl::create_kvs_attr();
+        auto ip_port = std::string(std::getenv("MASTER_ADDR")) + "_" + std::string(std::getenv("MASTER_PORT"));
+        attr.set<ccl::kvs_attr_id::ip_port>(ccl::string_class(ip_port));
+        if (create_kvs_by_attr(attr, kvs) != KVS_CREATE_SUCCESS) {
+            std::cout << "can not create kvs by attr" << std::endl;
+        }
+    }
+    _ccl_comms.emplace_back(ccl::create_communicator(size, rank, kvs));
+    // Create the world group
+    //py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
+    //py::object world_group;
+    //world_group = py::none();
+    //world_group = ProcessGroup(0, ranks);
+    //std::cout << "RANK: " << get_rank() << " COMM_ID: " << py::int_(world_group.attr("comm_id")) << std::endl;
+    //world_group.attr("ranks") = ranks;
+    //CCLCHECK(cclCommDestroy(_world_ccl_comm));
+}
+
 
 #if 0
 cclComm_t _get_comm_from_group(py::object group);
@@ -313,18 +373,15 @@ ccl::communicator& _get_comm_from_group() {
 }
 
 ccl::communicator& _get_comm_from_group(py::object group) {
-    return _ccl_comms[0];
-    #if 0
     if (group == Py_None) {
         return _ccl_comms[0];
     } else {
-        py::object ProcessGroup = py::module_::import("torch.distributed").attr("ProcessGroup");
+        py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
         if (!py::isinstance(group, ProcessGroup)) {
             throw std::runtime_error ("Error: group must be of type ProcessGroup");
         }
         return _ccl_comms[py::int_(group.attr("comm_id"))];
     }
-    #endif
 }
 
 void broadcast(torch::Tensor& data, int src, py::object group, bool async_op)
