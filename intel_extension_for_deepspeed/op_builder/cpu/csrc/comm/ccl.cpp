@@ -1,38 +1,12 @@
 #include <torch/extension.h>
 
 #include <oneapi/ccl.hpp>
-//#include <mpi.h>
-#if 0
-#include <chrono>
-#include <pybind11/embed.h>
-namespace py = pybind11;
-
-#include <c10/util/irange.h>
-
-#include <iostream>
-#include <string>
-
-#include <comm.h>
-
-// TODO: remove
-#include <stdio.h>
-
-#endif
 
 std::set<int> _comm_ids;
 std::set<int> _colors;
 //std::unordered_map<int, ccl::communicator> _ccl_comms;
 ccl::vector_class<ccl::communicator> _ccl_comms;
-void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color);
-
-#define MPICHECK(cmd)                                                        \
-    do {                                                                     \
-        int e = cmd;                                                         \
-        if (e != MPI_SUCCESS) {                                              \
-            printf("Failed: MPI error %s:%d '%d'\n", __FILE__, __LINE__, e); \
-            exit(EXIT_FAILURE);                                              \
-        }                                                                    \
-    } while (0)
+//void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color);
 
 #define CCLCHECK(cmd)                                                                           \
     do {                                                                                         \
@@ -43,8 +17,6 @@ void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int c
 #define KVS_CREATE_FAILURE -1
 
 bool is_initialized = 0;
-
-bool use_mpi = 0;
 
 int world_rank = -1;
 int world_size = -1;
@@ -108,62 +80,14 @@ int next_unique_val(std::set<int> s) {
 }
 
 py::object new_group(std::vector<int> ranks) {
-    //std::cout << "RANK: " << get_rank() << " COMM_ID: " << comm_id << " COLOR: " << color << std::endl;
     int comm_id = next_unique_val(_comm_ids);
     int color = next_unique_val(_colors);
-    create_comm_group(ranks, get_rank(), comm_id, color);
-    py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
-    py::object newPG = ProcessGroup(comm_id, ranks);
-    return newPG;
+    std::cout << "RANK: " << get_rank() << " COMM_ID: " << comm_id << " COLOR: " << color << std::endl;
+    //create_comm_group(ranks, get_rank(), comm_id, color);
+    //py::object ProcessGroup = py::module_::import("deepspeed.comm").attr("ProcessGroup");
+    //py::object newPG = ProcessGroup(comm_id, ranks);
+    //return newPG;
 }
-
-void create_comm_group(std::vector<int> comm_ranks, int rank, int comm_id, int color)
-{
-    return;
-    #if 0
-    int world_rank, world_size;
-    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-    ccl::cclComm_t _ccl_comm;
-    MPI_Comm _comm;
-    MPI_Comm_dup(MPI_COMM_WORLD, &_comm);
-    MPI_Comm_group(_comm, &_group);
-    unsigned num_ranks = comm_ranks.size();
-    MPI_Comm _newcomm;
-    if (num_ranks < world_size) {
-        auto total_group = _group;
-        MPI_Group_incl(total_group, num_ranks, comm_ranks.data(), &_group);
-        MPI_Comm_split(_comm, color, 0, &_newcomm);
-        int local_world_rank, local_world_size;
-        MPI_Comm_rank(_newcomm, &local_world_rank);
-        MPI_Comm_size(_newcomm, &local_world_size);
-    } else if (num_ranks > world_size) {
-        auto message = std::string(
-            "Fail to create comm group (number of ranks is higher than world_size).");
-        std::cerr << message << std::endl;
-        throw std::runtime_error(message);
-    }
-    cclUniqueId _ccl_uid;
-    if (rank == comm_ranks[0]) {
-        cclGetUniqueId(&_ccl_uid);
-    }
-    MPI_Bcast((void*)&_ccl_uid,
-              sizeof(cclUniqueId),
-              MPI_BYTE,
-              comm_ranks[0],
-              num_ranks < world_size ? _newcomm : _comm);
-    if(std::find(comm_ranks.begin(), comm_ranks.end(), rank) != comm_ranks.end()) {
-        cclCommInitRank(&_ccl_comm, num_ranks, _ccl_uid, rank % num_ranks);
-    }
-    _comm_created = true;
-    _world_sizes[comm_id] = num_ranks;
-    _ccl_comms[comm_id] = _ccl_comm;
-    _color_map[comm_id] = color;
-    _comm_ids.insert(comm_id);
-    _colors.insert(color);
-    #endif
-}
-
 
 ccl::datatype get_ccl_datatype(c10::ScalarType type)
 {
@@ -272,10 +196,6 @@ void finalize()
     CCLCHECK(cclCommDestroy(_world_ccl_comm));
 }
 
-
-
-
-/*
 void test_set() {
     std::set<int> val1 = {6, 5, 10, 1};
     std::set<int> val2 = {};
@@ -285,9 +205,6 @@ void test_set() {
         std::cout << next_unique_val(val4) << std::endl;
     }
 }
-*/
-
-
 
 #endif
 
@@ -371,25 +288,25 @@ void barrier(py::object group, bool async_op) {
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    //m.def("getCclId", &getCclId, "Get Unique CCL ID");
+    m.def("create_main_kvs", &create_main_kvs, "create and get main kvs");
     m.def("initialize", &initialize, "ccl initialize");
-    //m.def("finalize", &finalize, "ccl finalize");
+    m.def("get_rank", &get_rank, "get rank");
+    m.def("get_world_size", &get_world_size, "get world size");
+    m.def("broadcast", &broadcast, "ccl broadcast");
     m.def("all_reduce", &all_reduce, "ccl all_reduce");
     m.def("barrier", &barrier, "barrier");
+    //m.def("new_group", &new_group, "automatically create comm group");
+    //m.def("getCclId", &getCclId, "Get Unique CCL ID");
+    //m.def("finalize", &finalize, "ccl finalize");
     //m.def("send", &send, "ccl send");
     //m.def("recv", &recv, "ccl recv");
-    m.def("broadcast", &broadcast, "ccl broadcast");
     //m.def("all_to_all_single", &all_to_all_single, "ccl alltoall");
     //m.def("all_toall_list", &all_to_all, "ccl alltoall list");
     //m.def("all_gather_base", &all_gather_base, "ccl all_gather_base");
     //m.def("all_gather", &all_gather, "ccl all_gather");
     //m.def("reduce", &reduce, "ccl reduce");
     //m.def("reduce_scatter", &reduce_scatter, "ccl reduce scatter");
-    m.def("get_rank", &get_rank, "get rank");
-    m.def("get_world_size", &get_world_size, "get world size");
     //m.def("create_comm_group", &create_comm_group, "manually create comm group");
     //m.def("test_set", &test_set, "manually create comm group");
-    m.def("new_group", &new_group, "automatically create comm group");
-    m.def("create_main_kvs", &create_main_kvs, "create and get main kvs");
     //m.def("get_world_group", &get_world_group, "Returns the WORLD process group");
 }
