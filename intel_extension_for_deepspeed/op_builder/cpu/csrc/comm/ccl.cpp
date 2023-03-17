@@ -40,12 +40,22 @@ void initialize(int size, int rank, torch::Tensor& kvs_data)
     _ccl_comms.emplace_back(ccl::create_communicator(size, rank, kvs));
 }
 
-std::vector<uint8_t> create_main_kvs()
+/*
+    rank == 0: create main kvs and return its address
+    rank == else: return an empty address
+*/
+std::vector<uint8_t> get_kvs_addr(int rank)
 {
-    kvs = ccl::create_main_kvs();
-    ccl::kvs::address_type main_addr = kvs->get_address();
-    auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
-    return ccl_kvs_addr;
+    if (rank == 0) {
+        kvs = ccl::create_main_kvs();
+        ccl::kvs::address_type main_addr = kvs->get_address();
+        auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
+        return ccl_kvs_addr;
+    } else {
+        ccl::kvs::address_type main_addr;
+        auto ccl_kvs_addr = std::vector<uint8_t>(main_addr.begin(), main_addr.end());
+        return ccl_kvs_addr;
+    }
 }
 
 int get_rank(int group = 0)
@@ -288,7 +298,7 @@ void barrier(py::object group, bool async_op) {
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("create_main_kvs", &create_main_kvs, "create and get main kvs");
+    m.def("get_kvs_addr", &get_kvs_addr, "create and get main kvs addr");
     m.def("initialize", &initialize, "ccl initialize");
     m.def("get_rank", &get_rank, "get rank");
     m.def("get_world_size", &get_world_size, "get world size");
