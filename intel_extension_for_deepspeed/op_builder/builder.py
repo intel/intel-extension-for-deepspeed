@@ -46,7 +46,7 @@ class SYCLOpBuilder(OpBuilder):
         return cxx_flags
 
     def extra_ldflags(self):
-        return ['-fPIC', '-Wl,-export-dynamic']
+        return ['-fsycl', '-fPIC', '-Wl,-export-dynamic']
 
     def fixed_aotflags(self):
         return ['-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs', "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode", '-Xs', "-device pvc"]
