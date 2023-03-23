@@ -18,6 +18,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
                 print("mapping environment variable PMI_SIZE to WORLD_SIZE")
         _check_and_mapping_mpich_env()
 
+    def is_synchronized_device(self):
+        return False
+
     # Device APIs
     def device_name(self, device_index=None):
         if device_index == None:
