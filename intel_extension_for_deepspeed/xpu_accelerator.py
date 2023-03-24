@@ -18,6 +18,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
                 print("mapping environment variable PMI_SIZE to WORLD_SIZE")
         _check_and_mapping_mpich_env()
 
+    def is_synchronized_device(self):
+        return False
+
     # Device APIs
     def device_name(self, device_index=None):
         if device_index == None:
@@ -208,7 +211,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder
+        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder
         from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
         from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
 
@@ -228,6 +231,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return TransformerBuilder
         elif class_name == "UtilsBuilder":
             return UtilsBuilder
+        elif class_name == "InferenceBuilder":
+            return InferenceBuilder
         else:
             return None
 
