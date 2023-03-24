@@ -16,7 +16,7 @@ class TransformerBuilder(SYCLOpBuilder):
         return f'deepspeed.ops.transformer.{self.NAME}_op'
 
     def extra_ldflags(self):
-        return []
+        return super().extra_ldflags()
 
     def sources(self):
         return [
