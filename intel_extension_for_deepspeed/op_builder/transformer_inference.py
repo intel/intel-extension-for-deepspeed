@@ -16,16 +16,19 @@ class InferenceBuilder(SYCLOpBuilder):
         # TODO: check SYCL environment
         return super().is_compatible(verbose)
 
-    def load(self, verbose=True):
-        # TODO: remove temporary bypass
-        return None
+    # def load(self, verbose=True):
+    #     # TODO: remove temporary bypass
+    #     return None
 
     def sources(self):
-        return []
+        return [
+            sycl_kernel_path('csrc/transformer/inference/softmax.cpp'),
+        ]
 
     def extra_ldflags(self):
         return []
 
     def include_paths(self):
-        return []
+        includes = [sycl_kernel_include('csrc/includes'), 'csrc/includes']
+        return includes
 
