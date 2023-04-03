@@ -4,20 +4,19 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #include "conversion_utils.h"
 #include "compatible.h"
-#include "inference_cuda_layers.h"
 #include "memory_access_utils.h"
 
-namespace cg = cooperative_groups;
 #define MAX_CAP 4
 #define MAX_SEQ 2048
 
-inline __device__ float gelu(const float x)
+#ifdef __SYCL_DEVICE_ONLY__
+inline float gelu(const float x)
 {
     const float sqrt_param = 0.79788456080286535587989211986876f;
     const float mul_param = 0.044715;
-    //TODO: tanhf is cuda kernel w/o including any other headers
     return x * 0.5f * (1.0f + tanhf(sqrt_param * (x + mul_param * x * x * x)));
 }
+#endif
 
 /*
 In-place gelu(biasAdd(x)) for channels last
@@ -55,28 +54,23 @@ template <typename T>
 void launch_bias_gelu(T* input,
                       const T* bias,
                       int intermediate_size,
-                      int batch_size,
-                      cudaStream_t stream)
+                      int batch_size)
 {
     constexpr int threads = 1024;
     constexpr int granularity = 16;
 
     const int total_count = batch_size * intermediate_size;
     const int elems_per_block = threads * (granularity / sizeof(T));
-    dim3 block_dims(threads);
-    dim3 grid_dims((total_count + elems_per_block - 1) / elems_per_block);
 
-    fused_bias_gelu<<<grid_dims, block_dims, 0, stream>>>(
-        input, bias, total_count, intermediate_size);
+    fused_bias_gelu(input, bias, total_count, intermediate_size);
 }
 
-template void launch_bias_gelu<float>(float*, const float*, int, int, cudaStream_t);
-template void launch_bias_gelu<__nv_bfloat16>(__nv_bfloat16*,
-                                              const __nv_bfloat16*,
-                                              int,
-                                              int,
-                                              cudaStream_t);
-template void launch_bias_gelu<__half>(__half*, const __half*, int, int, cudaStream_t);
+template void launch_bias_gelu<float>(float*, const float*, int, int);
+template void launch_bias_gelu<bf16>(bf16*,
+                                     const bf16*,
+                                     int,
+                                     int);
+template void launch_bias_gelu<half>(half*, const half*, int, int);
 
 /*
 In-place channels-last bias add
@@ -110,28 +104,23 @@ template <typename T>
 void launch_bias_add(T* input,
                      const T* bias,
                      int intermediate_size,
-                     int batch_size,
-                     cudaStream_t stream)
+                     int batch_size)
 {
     constexpr int threads = 1024;
     constexpr int granularity = 16;
 
     const int total_count = batch_size * intermediate_size;
     const int elems_per_block = threads * (granularity / sizeof(T));
-    dim3 block_dims(threads);
-    dim3 grid_dims((total_count + elems_per_block - 1) / elems_per_block);
 
-    fused_bias_add<<<grid_dims, block_dims, 0, stream>>>(
-        input, bias, total_count, intermediate_size);
+    fused_bias_add(input, bias, total_count, intermediate_size);
 }
 
-template void launch_bias_add<float>(float*, const float*, int, int, cudaStream_t);
-template void launch_bias_add<__nv_bfloat16>(__nv_bfloat16*,
-                                             const __nv_bfloat16*,
-                                             int,
-                                             int,
-                                             cudaStream_t);
-template void launch_bias_add<__half>(__half*, const __half*, int, int, cudaStream_t);
+template void launch_bias_add<float>(float*, const float*, int, int);
+template void launch_bias_add<bf16>(bf16*,
+                                    const bf16*,
+                                    int,
+                                    int);
+template void launch_bias_add<half>(half*, const half*, int, int);
 
 __global__ void fused_bias_residual(float* residual,
                                     const float* hidden_state,
@@ -266,54 +255,50 @@ void launch_bias_residual(T* residual,
                           int batch,
                           int hidden_dim,
                           int mp_size,
-                          bool preln,
-                          cudaStream_t stream)
+                          bool preln)
 {
     int total_count = batch * hidden_dim / 4;
-    dim3 block_dims(1024);
-    dim3 grid_dims((total_count - 1) / 1024 + 1);  // (batch_size);
 
-    fused_bias_residual<<<grid_dims, block_dims, 0, stream>>>(residual,
-                                                              hidden_state,
-                                                              attn,
-                                                              bias,
-                                                              attn_bias,
-                                                              total_count,
-                                                              hidden_dim / 4,
-                                                              1.0 / mp_size,
-                                                              preln);
+    fused_bias_residual(residual,
+                        hidden_state,
+                        attn,
+                        bias,
+                        attn_bias,
+                        total_count,
+                        hidden_dim / 4,
+                        1.0 / mp_size,
+                        preln);
 }
 
 template void launch_bias_residual<
-    float>(float*, float*, float*, float*, float*, int, int, int, bool, cudaStream_t);
-template void launch_bias_residual<__nv_bfloat16>(__nv_bfloat16*,
-                                                  __nv_bfloat16*,
-                                                  __nv_bfloat16*,
-                                                  __nv_bfloat16*,
-                                                  __nv_bfloat16*,
-                                                  int,
-                                                  int,
-                                                  int,
-                                                  bool,
-                                                  cudaStream_t);
+    float>(float*, float*, float*, float*, float*, int, int, int, bool);
+template void launch_bias_residual<bf16>(bf16*,
+                                         bf16*,
+                                         bf16*,
+                                         bf16*,
+                                         bf16*,
+                                         int,
+                                         int,
+                                         int,
+                                         bool);
 template void launch_bias_residual<
-    __half>(__half*, __half*, __half*, __half*, __half*, int, int, int, bool, cudaStream_t);
+    half>(half*, half*, half*, half*, half*, int, int, int, bool);
 
-template __global__ void fused_bias_residual(__nv_bfloat16* residual,
-                                             const __nv_bfloat16* hidden_state,
-                                             const __nv_bfloat16* attn,
-                                             const __nv_bfloat16* bias,
-                                             const __nv_bfloat16* attn_bias,
+template __global__ void fused_bias_residual(bf16* residual,
+                                             const bf16* hidden_state,
+                                             const bf16* attn,
+                                             const bf16* bias,
+                                             const bf16* attn_bias,
                                              const int total_count,
                                              const int intermediate_size,
                                              const float mp_scale,
                                              const bool preln);
 
-template __global__ void fused_bias_residual(__half* residual,
-                                             const __half* hidden_state,
-                                             const __half* attn,
-                                             const __half* bias,
-                                             const __half* attn_bias,
+template __global__ void fused_bias_residual(half* residual,
+                                             const half* hidden_state,
+                                             const half* attn,
+                                             const half* bias,
+                                             const half* attn_bias,
                                              const int total_count,
                                              const int intermediate_size,
                                              const float mp_scale,
@@ -370,7 +355,7 @@ __global__ void gptj_residual_add(T* residual,
                                   const float mp_scale)
 {
     using T2 =
-        typename std::conditional<std::is_same<T, __half>::value, __half2, __nv_bfloat162>::type;
+        typename std::conditional<std::is_same<T, half>::value, half2, bf162>::type;
     float2* res_fl2_ptr = reinterpret_cast<float2*>(residual);
     const float2* hs_fl2_ptr = reinterpret_cast<const float2*>(hidden_state);
     const float2* attn_fl2_ptr = reinterpret_cast<const float2*>(attn);
@@ -433,14 +418,11 @@ void launch_gptj_residual_add(T* residual,
                               T* attn_bias,
                               int hidden_dim,
                               int batch,
-                              int mp_size,
-                              cudaStream_t stream)
+                              int mp_size)
 {
     int total_count = batch * hidden_dim / 4;
-    dim3 block_dims(1024);
-    dim3 grid_dims((total_count - 1) / 1024 + 1);  // (batch_size);
 
-    gptj_residual_add<<<grid_dims, block_dims, 0, stream>>>(
+    gptj_residual_add(
         residual, hidden_state, attn, bias, attn_bias, total_count, hidden_dim / 4, 1.0 / mp_size);
 }
 
@@ -451,43 +433,40 @@ template void launch_gptj_residual_add<float>(float*,
                                               float*,
                                               int,
                                               int,
-                                              int,
-                                              cudaStream_t);
+                                              int);
 
-template void launch_gptj_residual_add<__nv_bfloat16>(__nv_bfloat16*,
-                                                      __nv_bfloat16*,
-                                                      __nv_bfloat16*,
-                                                      __nv_bfloat16*,
-                                                      __nv_bfloat16*,
-                                                      int,
-                                                      int,
-                                                      int,
-                                                      cudaStream_t);
+template void launch_gptj_residual_add<bf16>(bf16*,
+                                             bf16*,
+                                             bf16*,
+                                             bf16*,
+                                             bf16*,
+                                             int,
+                                             int,
+                                             int);
 
-template void launch_gptj_residual_add<__half>(__half*,
-                                               __half*,
-                                               __half*,
-                                               __half*,
-                                               __half*,
+template void launch_gptj_residual_add<half>(half*,
+                                               half*,
+                                               half*,
+                                               half*,
+                                               half*,
                                                int,
                                                int,
-                                               int,
-                                               cudaStream_t);
+                                               int);
 
-template __global__ void gptj_residual_add(__nv_bfloat16* residual,
-                                           const __nv_bfloat16* hidden_state,
-                                           const __nv_bfloat16* attn,
-                                           const __nv_bfloat16* bias,
-                                           const __nv_bfloat16* attn_bias,
+template __global__ void gptj_residual_add(bf16* residual,
+                                           const bf16* hidden_state,
+                                           const bf16* attn,
+                                           const bf16* bias,
+                                           const bf16* attn_bias,
                                            const int total_count,
                                            const int intermediate_size,
                                            const float mp_scale);
 
-template __global__ void gptj_residual_add(__half* residual,
-                                           const __half* hidden_state,
-                                           const __half* attn,
-                                           const __half* bias,
-                                           const __half* attn_bias,
+template __global__ void gptj_residual_add(half* residual,
+                                           const half* hidden_state,
+                                           const half* attn,
+                                           const half* bias,
+                                           const half* attn_bias,
                                            const int total_count,
                                            const int intermediate_size,
                                            const float mp_scale);
@@ -527,41 +506,34 @@ void launch_moe_res_matmul(T* residual,
                            T* coef,
                            T* mlp_out,
                            int seq_len,
-                           int hidden_dim,
-                           cudaStream_t stream)
+                           int hidden_dim)
 {
-    dim3 grid_dim(seq_len);
-    dim3 block_dim(1024);
-    moe_res_matmul<<<grid_dim, block_dim, 0, stream>>>(
-        residual, coef, mlp_out, seq_len, hidden_dim);
+    moe_res_matmul(residual, coef, mlp_out, seq_len, hidden_dim);
 }
 
 template void launch_moe_res_matmul(float* residual,
                                     float* coef,
                                     float* mlp_out,
                                     int seq_len,
-                                    int hidden_dim,
-                                    cudaStream_t stream);
+                                    int hidden_dim);
 
-template void launch_moe_res_matmul(__nv_bfloat16* residual,
-                                    __nv_bfloat16* coef,
-                                    __nv_bfloat16* mlp_out,
+template void launch_moe_res_matmul(bf16* residual,
+                                    bf16* coef,
+                                    bf16* mlp_out,
                                     int seq_len,
-                                    int hidden_dim,
-                                    cudaStream_t stream);
+                                    int hidden_dim);
 
-template void launch_moe_res_matmul(__half* residual,
-                                    __half* coef,
-                                    __half* mlp_out,
+template void launch_moe_res_matmul(half* residual,
+                                    half* coef,
+                                    half* mlp_out,
                                     int seq_len,
-                                    int hidden_dim,
-                                    cudaStream_t stream);
+                                    int hidden_dim);
 
 template <typename T>
 __global__ void pad_data_kernel(T* padded_output, T* output, int head_size, int padded_head_size)
 {
     using T2 =
-        typename std::conditional<std::is_same<T, __half>::value, __half2, __nv_bfloat162>::type;
+        typename std::conditional<std::is_same<T, half>::value, half2, bf162>::type;
     float4* padded_output_cast = reinterpret_cast<float4*>(padded_output);
     float4* output_cast = reinterpret_cast<float4*>(output);
     int bid = blockIdx.x * (blockDim.y) + threadIdx.y;
@@ -591,42 +563,35 @@ void pad_data(T* padded_output,
               T* output,
               int bsz,
               int head_size,
-              int padded_head_size,
-              cudaStream_t stream)
+              int padded_head_size)
 {
-    dim3 grid_dim((bsz - 1) / 16 + 1);
-    dim3 block_dim(padded_head_size / 8, 16);
-    pad_data_kernel<<<grid_dim, block_dim, 0, stream>>>(
-        padded_output, output, head_size / 8, padded_head_size / 8);
+    pad_data_kernel(padded_output, output, head_size / 8, padded_head_size / 8);
 }
-template void pad_data(__half* padded_output,
-                       __half* output,
+template void pad_data(half* padded_output,
+                       half* output,
                        int bsz,
                        int head_size,
-                       int padded_head_size,
-                       cudaStream_t stream);
+                       int padded_head_size);
 
-template void pad_data(__nv_bfloat16* padded_output,
-                       __nv_bfloat16* output,
+template void pad_data(bf16* padded_output,
+                       bf16* output,
                        int bsz,
                        int head_size,
-                       int padded_head_size,
-                       cudaStream_t stream);
+                       int padded_head_size);
 
 template void pad_data(float* padded_output,
                        float* output,
                        int bsz,
                        int head_size,
-                       int padded_head_size,
-                       cudaStream_t stream);
+                       int padded_head_size);
 
-template __global__ void pad_data_kernel(__nv_bfloat16* padded_output,
-                                         __nv_bfloat16* output,
+template __global__ void pad_data_kernel(bf16* padded_output,
+                                         bf16* output,
                                          int head_size,
                                          int padded_head_size);
 
-template __global__ void pad_data_kernel(__half* padded_output,
-                                         __half* output,
+template __global__ void pad_data_kernel(half* padded_output,
+                                         half* output,
                                          int head_size,
                                          int padded_head_size);
 
@@ -639,7 +604,7 @@ __global__ void pad_head_seq_kernel(T* padded_output,
                                     int padded_head_size)
 {
     using T2 =
-        typename std::conditional<std::is_same<T, __half>::value, __half2, __nv_bfloat162>::type;
+        typename std::conditional<std::is_same<T, half>::value, half2, bf162>::type;
     float4* padded_output_cast = reinterpret_cast<float4*>(padded_output);
     float4* output_cast = reinterpret_cast<float4*>(output);
     int bsz = blockIdx.x;
@@ -675,32 +640,27 @@ void pad_head_seq(T* padded_output,
                   int seq_len,
                   int padded_seq_len,
                   int head_size,
-                  int padded_head_size,
-                  cudaStream_t stream)
+                  int padded_head_size)
 {
-    dim3 grid_dim(bsz, padded_seq_len / 16);
-    dim3 block_dim(padded_head_size / 8, 16);
-    pad_head_seq_kernel<<<grid_dim, block_dim, 0, stream>>>(
+    pad_head_seq_kernel(
         padded_output, output, seq_len, padded_seq_len, head_size / 8, padded_head_size / 8);
 }
 
-template void pad_head_seq(__half* padded_output,
-                           __half* output,
+template void pad_head_seq(half* padded_output,
+                           half* output,
                            int bsz,
                            int seq_len,
                            int padded_seq_len,
                            int head_size,
-                           int padded_head_size,
-                           cudaStream_t stream);
+                           int padded_head_size);
 
-template void pad_head_seq(__nv_bfloat16* padded_output,
-                           __nv_bfloat16* output,
+template void pad_head_seq(bf16* padded_output,
+                           bf16* output,
                            int bsz,
                            int seq_len,
                            int padded_seq_len,
                            int head_size,
-                           int padded_head_size,
-                           cudaStream_t stream);
+                           int padded_head_size);
 
 template void pad_head_seq(float* padded_output,
                            float* output,
@@ -708,16 +668,17 @@ template void pad_head_seq(float* padded_output,
                            int seq_len,
                            int padded_seq_len,
                            int head_size,
-                           int padded_head_size,
-                           cudaStream_t stream);
+                           int padded_head_size);
 
 // TODO(cmikeh2): evaluate different GeLU performance
-__device__ __forceinline__ float old_gelu(float val)
+#ifdef __SYCL_DEVICE_ONLY__
+inline float old_gelu(float val)
 {
     // 1 / sqrt(2)
     constexpr float rsqrt_2 = 0.707106769084930419922;
     return val * 0.5f * (1.0f + erff(val * rsqrt_2));
 }
+#endif
 
 namespace fused_geglu {
 constexpr int threads = 256;
@@ -781,8 +742,7 @@ void launch_fused_bias_geglu(T* output,
                              const T* activation,
                              const T* bias,
                              int rows,
-                             int elems_per_row,
-                             cudaStream_t stream)
+                             int elems_per_row)
 {
     /*
     Fused bias GEGLU is a variant of the gated activation functions.
@@ -799,23 +759,18 @@ void launch_fused_bias_geglu(T* output,
     const int base_channels = elems_per_row / 2;
     const int total_elems = base_channels * rows;
 
-    dim3 block(fused_geglu::threads);
-    dim3 grid((total_elems + T_per_block - 1) / T_per_block);
 
-    fused_bias_geglu<<<grid, block, 0, stream>>>(
-        output, activation, bias, base_channels, total_elems);
+    fused_bias_geglu(output, activation, bias, base_channels, total_elems);
 }
 
-template void launch_fused_bias_geglu(__half*,
-                                      const __half*,
-                                      const __half*,
+template void launch_fused_bias_geglu(half*,
+                                      const half*,
+                                      const half*,
                                       int,
+                                      int);
+template void launch_fused_bias_geglu(bf16*,
+                                      const bf16*,
+                                      const bf16*,
                                       int,
-                                      cudaStream_t);
-template void launch_fused_bias_geglu(__nv_bfloat16*,
-                                      const __nv_bfloat16*,
-                                      const __nv_bfloat16*,
-                                      int,
-                                      int,
-                                      cudaStream_t);
-template void launch_fused_bias_geglu(float*, const float*, const float*, int, int, cudaStream_t);
+                                      int);
+template void launch_fused_bias_geglu(float*, const float*, const float*, int, int);
