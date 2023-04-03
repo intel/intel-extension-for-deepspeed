@@ -21,7 +21,6 @@ enum class StorePolicy {
     CacheStreaming  // Allocate cache line with evict first policy
 };
 
-#ifdef __SYCL_DEVICE_ONLY__
 template <int AccessSize, LoadPolicy policy = LoadPolicy::CacheAll>
 inline void load_global(void* dst, const void* src);
 
@@ -508,6 +507,5 @@ inline void store_shared<4>(void* dst, const void* src)
     int32_t* dst_cast = reinterpret_cast<int32_t*>(dst);
     dst_cast[0] = data[0];
 }
-#endif
 
 }  // namespace mem_access
