@@ -6,10 +6,9 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #include <stdint.h>
 #include <sycl/half_type.hpp>
-#include <sycl/builtins.hpp>
 
 #include "compatible.h"
-/* #include <sycl/ext/oneapi/bfloat16.hpp> */
+#include <ext/oneapi/experimental/bfloat16.hpp>
 
 namespace conversion {
 
@@ -253,7 +252,10 @@ inline float2 to(half2 val)
 template <>
 inline float2 to(bf162 val)
 {
-    return val.convert<float>();
+    float2 tmp;
+    tmp[0] = bf16::to_float(val[0]);
+    tmp[1] = bf16::to_float(val[1]);
+    return tmp;
 }
 #endif
 
@@ -401,7 +403,10 @@ inline bf16 to(uint8_t val)
 template <>
 inline bf162 to(float2 val)
 {
-    return val.convert<bf16>;
+    bf162 tmp;
+    tmp[0] = bf16::from_float(val[0]);
+    tmp[1] = bf16::from_float(val[1]);
+    return tmp;
 }
 template <>
 inline bf162 to(float val)
@@ -414,7 +419,8 @@ inline bf162 to(float val)
 template <>
 inline bf162 to(half2 val)
 {
-    return val.convert<bf16>;
+    auto tmp = to<float>(val);
+    return to<bf162>(tmp);
 }
 #endif
 

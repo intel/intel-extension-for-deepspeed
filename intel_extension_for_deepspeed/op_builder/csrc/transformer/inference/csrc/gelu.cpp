@@ -35,7 +35,6 @@ __global__ void fused_bias_gelu(T* input, const T* bias, int total_count, int in
     if (offset < total_count) {
         T data[values_per_access];
         T data_bias[values_per_access];
-        // TODO: mem_access code need to replaced?
         mem_access::load_global<granularity>(data, input + offset);
         mem_access::load_global<granularity>(data_bias, bias + (offset % intermediate_size));
 
@@ -78,10 +77,11 @@ In-place channels-last bias add
 template <typename T>
 __global__ void fused_bias_add(T* input, const T* bias, int total_count, int intermediate_size)
 {
+    auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
     // Input restriction: intermediate_size % vals_per_access == 0
     constexpr int granularity = 16;
     constexpr int values_per_access = granularity / sizeof(T);
-    const int offset = (blockIdx.x * blockDim.x + threadIdx.x) * values_per_access;
+    const int offset = (pos.get_group(0) * pos.get_local_range(0) + pos.get_local_id(0)) * values_per_access;
 
     if (offset < total_count) {
         T data[values_per_access];
@@ -313,12 +313,15 @@ __global__ void gptj_residual_add(float* residual,
                                   const int intermediate_size,
                                   const float mp_scale)
 {
+    auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
+    
     float4* res_fl4_ptr = reinterpret_cast<float4*>(residual);
     const float4* hs_fl4_ptr = reinterpret_cast<const float4*>(hidden_state);
     const float4* attn_fl4_ptr = reinterpret_cast<const float4*>(attn);
     const float4* bias_fl4_ptr = reinterpret_cast<const float4*>(bias);
     const float4* attn_bias_fl4_ptr = reinterpret_cast<const float4*>(attn_bias);
-    const int offset = blockIdx.x * blockDim.x + threadIdx.x;
+    /* const int offset = blockIdx.x * blockDim.x + threadIdx.x; */
+    const int offset = pos.get_group(0) * pos.get_local_range(0) + pos.get_local_id(0);
 
     if (offset < total_count) {
         float4 res_fl4 = res_fl4_ptr[offset];
@@ -329,16 +332,16 @@ __global__ void gptj_residual_add(float* residual,
         if (attn_bias) {
             float4 attn_bias_fl4 = attn_bias_fl4_ptr[offset % intermediate_size];
             // residual += attention_bias
-            res_fl4.x += attn_bias_fl4.x;
-            res_fl4.y += attn_bias_fl4.y;
-            res_fl4.z += attn_bias_fl4.z;
-            res_fl4.w += attn_bias_fl4.w;
+            res_fl4.x() += attn_bias_fl4.x();
+            res_fl4.y() += attn_bias_fl4.y();
+            res_fl4.z() += attn_bias_fl4.z();
+            res_fl4.w() += attn_bias_fl4.w();
         }
         // residual = hidden_state + attention + (residual + bias) * mp_scale
-        res_fl4.x = hs_fl4.x + attn_fl4.x + (res_fl4.x + bias_fl4.x) * mp_scale;
-        res_fl4.y = hs_fl4.y + attn_fl4.y + (res_fl4.y + bias_fl4.y) * mp_scale;
-        res_fl4.z = hs_fl4.z + attn_fl4.z + (res_fl4.z + bias_fl4.z) * mp_scale;
-        res_fl4.w = hs_fl4.w + attn_fl4.w + (res_fl4.w + bias_fl4.w) * mp_scale;
+        res_fl4.x() = hs_fl4.x() + attn_fl4.x() + (res_fl4.x() + bias_fl4.x()) * mp_scale;
+        res_fl4.y() = hs_fl4.y() + attn_fl4.y() + (res_fl4.y() + bias_fl4.y()) * mp_scale;
+        res_fl4.z() = hs_fl4.z() + attn_fl4.z() + (res_fl4.z() + bias_fl4.z()) * mp_scale;
+        res_fl4.w() = hs_fl4.w() + attn_fl4.w() + (res_fl4.w() + bias_fl4.w()) * mp_scale;
 
         res_fl4_ptr[offset] = res_fl4;
     }
@@ -354,6 +357,8 @@ __global__ void gptj_residual_add(T* residual,
                                   const int intermediate_size,
                                   const float mp_scale)
 {
+    auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
+    
     using T2 =
         typename std::conditional<std::is_same<T, half>::value, half2, bf162>::type;
     float2* res_fl2_ptr = reinterpret_cast<float2*>(residual);
@@ -361,7 +366,8 @@ __global__ void gptj_residual_add(T* residual,
     const float2* attn_fl2_ptr = reinterpret_cast<const float2*>(attn);
     const float2* bias_fl2_ptr = reinterpret_cast<const float2*>(bias);
     const float2* attn_bias_fl2_ptr = reinterpret_cast<const float2*>(attn_bias);
-    const int offset = blockIdx.x * blockDim.x + threadIdx.x;
+    /* const int offset = blockIdx.x * blockDim.x + threadIdx.x; */
+    const int offset = pos.get_group(0) * pos.get_local_range(0) + pos.get_local_id(0);
 
     if (offset < total_count) {
         float2 res_fl2 = res_fl2_ptr[offset];
@@ -392,16 +398,16 @@ __global__ void gptj_residual_add(T* residual,
             const float2 attn_bias_low = conversion::to<float2>(attn_bias_half2[0]);
             const float2 attn_bias_high = conversion::to<float2>(attn_bias_half2[1]);
             // residual += attention_bias
-            res_low.x += attn_bias_low.x;
-            res_low.y += attn_bias_low.y;
-            res_high.x += attn_bias_high.x;
-            res_high.y += attn_bias_high.y;
+            res_low.x() += attn_bias_low.x();
+            res_low.y() += attn_bias_low.y();
+            res_high.x() += attn_bias_high.x();
+            res_high.y() += attn_bias_high.y();
         }
         // residual = hidden_state + attention + (residual + bias) * mp_scale
-        res_low.x = attn_low.x + hs_low.x + (res_low.x + bias_low.x) * mp_scale;
-        res_low.y = attn_low.y + hs_low.y + (res_low.y + bias_low.y) * mp_scale;
-        res_high.x = attn_high.x + hs_high.x + (res_high.x + bias_high.x) * mp_scale;
-        res_high.y = attn_high.y + hs_high.y + (res_high.y + bias_high.y) * mp_scale;
+        res_low.x() = attn_low.x() + hs_low.x() + (res_low.x() + bias_low.x()) * mp_scale;
+        res_low.y() = attn_low.y() + hs_low.y() + (res_low.y() + bias_low.y()) * mp_scale;
+        res_high.x() = attn_high.x() + hs_high.x() + (res_high.x() + bias_high.x()) * mp_scale;
+        res_high.y() = attn_high.y() + hs_high.y() + (res_high.y() + bias_high.y()) * mp_scale;
 
         res_half2[0] = conversion::to<T2>(res_low);
         res_half2[1] = conversion::to<T2>(res_high);
@@ -474,14 +480,15 @@ template __global__ void gptj_residual_add(half* residual,
 template <typename T>
 __global__ void moe_res_matmul(T* residual, T* coef, T* mlp_out, int seq_len, int hidden_dim)
 {
+    auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
     constexpr int granularity = 16;
     constexpr int vals_per_access = granularity / sizeof(T);
 
-    T* residual_seq = residual + blockIdx.x * hidden_dim;
-    T* mlp_out_seq = mlp_out + blockIdx.x * hidden_dim;
+    T* residual_seq = residual + pos.get_group(0) * hidden_dim;
+    T* mlp_out_seq = mlp_out + pos.get_group(0) * hidden_dim;
 
-    for (unsigned tid = threadIdx.x * vals_per_access; tid < hidden_dim;
-         tid += blockDim.x * vals_per_access) {
+    for (unsigned tid = pos.get_local_id(0) * vals_per_access; tid < hidden_dim;
+         tid += pos.get_local_range(0) * vals_per_access) {
         T mlp[vals_per_access];
         T res[vals_per_access];
         T coef1[vals_per_access];
@@ -532,12 +539,15 @@ template void launch_moe_res_matmul(half* residual,
 template <typename T>
 __global__ void pad_data_kernel(T* padded_output, T* output, int head_size, int padded_head_size)
 {
+    auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
+    
     using T2 =
         typename std::conditional<std::is_same<T, half>::value, half2, bf162>::type;
     float4* padded_output_cast = reinterpret_cast<float4*>(padded_output);
     float4* output_cast = reinterpret_cast<float4*>(output);
-    int bid = blockIdx.x * (blockDim.y) + threadIdx.y;
-    int idx = threadIdx.x;
+    // TODO: blockDim.y replacement
+    int bid = pos.get_group(0) * (pos.get_local_range(1)) + pos.get_local_id(1);
+    int idx = pos.get_local_id(0);
     padded_output_cast += (bid * padded_head_size);
     output_cast += (bid * head_size);
     float4 ZERO;
@@ -603,13 +613,16 @@ __global__ void pad_head_seq_kernel(T* padded_output,
                                     int head_size,
                                     int padded_head_size)
 {
+    auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
+    
     using T2 =
         typename std::conditional<std::is_same<T, half>::value, half2, bf162>::type;
     float4* padded_output_cast = reinterpret_cast<float4*>(padded_output);
     float4* output_cast = reinterpret_cast<float4*>(output);
-    int bsz = blockIdx.x;
-    int bid = blockIdx.y * (blockDim.y) + threadIdx.y;
-    int idx = threadIdx.x;
+    /* const int offset = (pos.get_group(0) * pos.get_local_range(0) + pos.get_local_id(0)) * values_per_access; */
+    int bsz = pos.get_group(0);
+    int bid = pos.get_group(0) * (pos.get_local_range(1)) + pos.get_local_id(1);
+    int idx = pos.get_local_id(0);
     padded_output_cast += (bsz * padded_seq_len + bid) * padded_head_size;
     output_cast += (bsz * seq_len + bid) * head_size;
     float4 ZERO;
@@ -693,11 +706,13 @@ __global__ void fused_bias_geglu(T* output,
                                  int base_channels,
                                  int total_elems)
 {
+    auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
+    
     constexpr int T_per_access = fused_geglu::granularity / sizeof(T);
     constexpr int T_per_step = T_per_access * fused_geglu::threads;
     constexpr int T_per_block = T_per_step * fused_geglu::steps;
 
-    const int id = blockIdx.x * T_per_block + threadIdx.x * T_per_access;
+    const int id = pos.get_group(0) * T_per_block + pos.get_local_id(0) * T_per_access;
 
 #pragma unroll
     for (int i = 0; i < fused_geglu::steps; i++) {
