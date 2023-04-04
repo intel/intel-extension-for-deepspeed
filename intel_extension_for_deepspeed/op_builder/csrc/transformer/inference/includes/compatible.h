@@ -31,6 +31,15 @@ using half2 = sycl::vec<half, 2>;
 using uint4 = sycl::vec<uint, 4>;
 using uint2 = sycl::vec<uint, 2>;
 
+inline int next_pow2(const int val)
+{   
+  int rounded_val = val - 1;
+  rounded_val |= rounded_val >> 1;
+  rounded_val |= rounded_val >> 2;
+  rounded_val |= rounded_val >> 4;
+  rounded_val |= rounded_val >> 8;                
+  return rounded_val + 1;                         
+}
 
 template <typename T, typename Group, typename... Args>
 std::enable_if_t<std::is_trivially_destructible<T>::value &&
