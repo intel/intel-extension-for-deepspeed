@@ -19,11 +19,20 @@ inline float gelu(const float x) {
 /*
 In-place gelu(biasAdd(x)) for channels last
 */
-// TODO: fix this syntax to sycl gemm kernel uses it
 template <typename T>
-__global__ void fused_bias_gelu(T *input, const T *bias, int total_count,
-                                int intermediate_size) {
-  auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
+class  fused_bias_gelu {
+private:
+  T *input; 
+  const T *bias; 
+  int total_count;
+  int intermediate_size;
+
+public:
+  fused_bias_gelu(T *input, const T *bias, int total_count, int intermediate_size): input(input), bias(bias), total_count(total_count), intermediate_size(intermediate_size) {};
+
+  void operator()(sycl::nd_item<1> pos) {
+
+  /* auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>(); */
   // Input restriction: intermediate_size % vals_per_access == 0
   constexpr int granularity = 16;
   constexpr int values_per_access = granularity / sizeof(T);
@@ -50,31 +59,54 @@ __global__ void fused_bias_gelu(T *input, const T *bias, int total_count,
 
     mem_access::store_global<granularity>(input + offset, data);
   }
-}
+
+  };
+
+};
+
 
 template <typename T>
 void launch_bias_gelu(T *input, const T *bias, int intermediate_size,
-                      int batch_size) {
+                      int batch_size, sycl::queue stream) {
   constexpr int threads = 1024;
   constexpr int granularity = 16;
 
   const int total_count = batch_size * intermediate_size;
   const int elems_per_block = threads * (granularity / sizeof(T));
+  
+  sycl::range<1> block_dims{threads};
+  sycl::range<1> grid_dims{(total_count + elems_per_block - 1) / elems_per_block};
 
-  fused_bias_gelu(input, bias, total_count, intermediate_size);
+  fused_bias_gelu<T> fn(input, bias, total_count, intermediate_size);
+  stream.submit([&](sycl::handle &cmd_list) {
+      cmd_list.parallel_for(sycl::nd_item<1>{grid_dims, block_dims}, fn);
+      });
+
 }
 
-template void launch_bias_gelu<float>(float *, const float *, int, int);
-template void launch_bias_gelu<bf16>(bf16 *, const bf16 *, int, int);
-template void launch_bias_gelu<half>(half *, const half *, int, int);
+template void launch_bias_gelu<float>(float *, const float *, int, int, sycl::queue);
+template void launch_bias_gelu<bf16>(bf16 *, const bf16 *, int, int, sycl::queue);
+template void launch_bias_gelu<half>(half *, const half *, int, int, sycl::queue);
 
 /*
 In-place channels-last bias add
 */
 template <typename T>
-__global__ void fused_bias_add(T *input, const T *bias, int total_count,
-                               int intermediate_size) {
-  auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>();
+class fused_bias_add {
+
+private:
+  T *input; 
+  const T *bias;
+  int total_count;
+  int intermediate_size;
+
+public:
+  fused_bias_add(T *input, const T *bias, int total_count,
+                 int intermediate_size): input(input), bias(bias), total_count(total_count), intermediate_size(intermediate_size) {};
+
+  void operator()(sycl::nd_item<1> pos) {
+
+  /* auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>(); */
   // Input restriction: intermediate_size % vals_per_access == 0
   constexpr int granularity = 16;
   constexpr int values_per_access = granularity / sizeof(T);
@@ -98,23 +130,32 @@ __global__ void fused_bias_add(T *input, const T *bias, int total_count,
 
     mem_access::store_global<granularity>(input + offset, data);
   }
-}
+
+  };
+};
+
 
 template <typename T>
 void launch_bias_add(T *input, const T *bias, int intermediate_size,
-                     int batch_size) {
+                     int batch_size, sycl::queue stream) {
   constexpr int threads = 1024;
   constexpr int granularity = 16;
 
   const int total_count = batch_size * intermediate_size;
   const int elems_per_block = threads * (granularity / sizeof(T));
 
-  fused_bias_add(input, bias, total_count, intermediate_size);
+  sycl::range<1> block_dims{threads};
+  sycl::range<1> grid_dims{(total_count + elems_per_block - 1) / elems_per_block};
+
+  fused_bias_add<T> fn(input, bias, total_count, intermediate_size);
+  stream.submit([&](sycl::handle &cmd_list) {
+      cmd_list.parallel_for(sycl::nd_item<1>{grid_dims, block_dims}, fn);
+      });
 }
 
-template void launch_bias_add<float>(float *, const float *, int, int);
-template void launch_bias_add<bf16>(bf16 *, const bf16 *, int, int);
-template void launch_bias_add<half>(half *, const half *, int, int);
+template void launch_bias_add<float>(float *, const float *, int, int, sycl::queue);
+template void launch_bias_add<bf16>(bf16 *, const bf16 *, int, int, sycl::queue);
+template void launch_bias_add<half>(half *, const half *, int, int, sycl::queue);
 
 template <typename T> class fused_bias_residual {
 
@@ -417,11 +458,11 @@ void launch_bias_residual(T *residual, T *hidden_state, T *attn, T *bias,
 }
 
 template void launch_bias_residual<float>(float *, float *, float *, float *,
-                                          float *, int, int, int, bool);
+                                          float *, int, int, int, bool, sycl::queue);
 template void launch_bias_residual<bf16>(bf16 *, bf16 *, bf16 *, bf16 *, bf16 *,
-                                         int, int, int, bool);
+                                         int, int, int, bool, sycl::queue);
 template void launch_bias_residual<half>(half *, half *, half *, half *, half *,
-                                         int, int, int, bool);
+                                         int, int, int, bool, sycl::queue);
 
 template class fused_bias_residual<half>;
 template class fused_bias_residual<bf16>;

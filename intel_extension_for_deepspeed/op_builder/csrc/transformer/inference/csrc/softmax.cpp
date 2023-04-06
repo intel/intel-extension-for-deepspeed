@@ -581,7 +581,7 @@ template void launch_attn_softmax_v2(float *vals, float *mask, float *alibi,
                                      int window_size, int batch_size, int heads,
                                      int num_seq, int sequence_length,
                                      int head_offset, int mask_stride,
-                                     int mp_size);
+                                     int mp_size, sycl::queue);
 
 template void launch_attn_softmax_v2(bf16 *vals, bf16 *mask, bf16 *alibi,
                                      float layer_scale, bool triangular,
@@ -589,7 +589,7 @@ template void launch_attn_softmax_v2(bf16 *vals, bf16 *mask, bf16 *alibi,
                                      int window_size, int batch_size, int heads,
                                      int num_seq, int sequence_length,
                                      int head_offset, int mask_stride,
-                                     int mp_size);
+                                     int mp_size, sycl::queue);
 
 template void launch_attn_softmax_v2(half *vals, half *mask, half *alibi,
                                      float layer_scale, bool triangular,
@@ -597,7 +597,7 @@ template void launch_attn_softmax_v2(half *vals, half *mask, half *alibi,
                                      int window_size, int batch_size, int heads,
                                      int num_seq, int sequence_length,
                                      int head_offset, int mask_stride,
-                                     int mp_size);
+                                     int mp_size, sycl::queue);
 
 template class attn_softmax_v2<half>;
 
