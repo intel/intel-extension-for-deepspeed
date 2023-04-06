@@ -475,86 +475,7 @@ void launch_fused_residual_ln(T *output, const T *vals, const T *residual,
   }
 }
 
-#define LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(unRollFactor, threadsPerGroup,    \
-                                             maxThreads)                       \
-  fused_residual_ln<T, unRollFactor, threadsPerGroup, maxThreads, true>        \
-      <<<grid, block, 0, stream>>>(norm_output, res_output, vals, residual,    \
-                                   bias, gamma, beta, epsilon, elems_per_row);
 
-template <typename T>
-void launch_fused_residual_ln_store_pre_ln_res(T *norm_output, T *res_output,
-                                               const T *vals, const T *residual,
-                                               const T *bias, const T *gamma,
-                                               const T *beta, float epsilon,
-                                               int rows, int elems_per_row,
-                                               cudaStream_t stream) {
-  // 8 for sycl::half, 4 for float
-  constexpr int T_per_load = ln::granularity / sizeof(T);
-
-  constexpr int maxThreads = 256;
-
-  // For Flaoat, unRoll 4, for sycl::half, unRoll 2
-  constexpr int internal_unRoll = sizeof(T) == 4 ? 4 : 2;
-
-  const bool is_subblock_schedule = (elems_per_row <= 128) ? true : false;
-  const int h_per_step =
-      is_subblock_schedule ? T_per_load : T_per_load * internal_unRoll;
-
-  // Scheduling concern: may be slightly faster for some inputs to assign
-  // multiple stages of warp-sized blocks rather than stepping up to 64/96
-  // threads
-  const int one_step_threads =
-      next_pow2((elems_per_row + h_per_step - 1) / h_per_step);
-  const int threadsPerGroup =
-      (one_step_threads < maxThreads) ? one_step_threads : maxThreads;
-
-  const int groups_per_block_max =
-      is_subblock_schedule
-          ? (maxThreads + threadsPerGroup - 1) / threadsPerGroup
-          : 1;
-  const int groups_per_block =
-      (rows < groups_per_block_max) ? rows : groups_per_block_max;
-  const int groups_launch = (groups_per_block + rows - 1) / groups_per_block;
-
-  sycl::range<2> block{threadsPerGroup, groups_per_block};
-  sycl::range<2> grid{threadsPerGroup, groups_launch * groups_per_block};
-
-  const int elems_per_step = threadsPerGroup * h_per_step;
-  const int external_unRoll =
-      (elems_per_row + elems_per_step - 1) / elems_per_step;
-
-  if (is_subblock_schedule) {
-    // <=128
-    if (threadsPerGroup == 1) {
-      LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(1, 1, maxThreads);
-    } else if (threadsPerGroup == 2) {
-      LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(1, 2, maxThreads);
-    } else if (threadsPerGroup == 4) {
-      LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(1, 4, maxThreads);
-    } else if (threadsPerGroup == 8) {
-      LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(1, 8, maxThreads);
-    } else if (threadsPerGroup == 16) {
-      LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(1, 16, maxThreads);
-    }
-  } else if (external_unRoll == 1) {
-    // 129 - 4096 elems
-    // (this can launch with 1-7 warps as well)
-    LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(1 * internal_unRoll, maxThreads,
-                                         maxThreads);
-  } else if (external_unRoll == 2) {
-    // 4097 - 8192 elems
-    LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(2 * internal_unRoll, maxThreads,
-                                         maxThreads);
-  } else if (external_unRoll == 3) {
-    // 8193 - 12288 elems
-    LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(3 * internal_unRoll, maxThreads,
-                                         maxThreads);
-  } else if (external_unRoll == 4) {
-    // 12289 - 16384 elems
-    LAUNCH_FUSED_RES_LN_STORE_PRE_LN_RES(4 * internal_unRoll, maxThreads,
-                                         maxThreads);
-  }
-}
 
 // No-store specializations
 template void launch_fused_residual_ln(sycl::half *, const sycl::half *,
@@ -571,16 +492,4 @@ template void launch_fused_residual_ln(float *, const float *, const float *,
                                        const float *, float, int, int,
                                        cudaStream_t);
 
-// Store specializations
-template void launch_fused_residual_ln_store_pre_ln_res(
-    sycl::half *, sycl::half *, const sycl::half *, const sycl::half *,
-    const sycl::half *, const sycl::half *, const sycl::half *, float, int, int,
-    cudaStream_t);
 
-template void launch_fused_residual_ln_store_pre_ln_res(
-    bf16 *, bf16 *, const bf16 *, const bf16 *, const bf16 *, const bf16 *,
-    const bf16 *, float, int, int, cudaStream_t);
-
-template void launch_fused_residual_ln_store_pre_ln_res(
-    float *, float *, const float *, const float *, const float *,
-    const float *, const float *, float, int, int, cudaStream_t);
