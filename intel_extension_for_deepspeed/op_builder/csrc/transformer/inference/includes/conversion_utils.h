@@ -13,10 +13,11 @@ Copyright 2022 The Microsoft DeepSpeed Team
 namespace conversion {
 
 // Basic primitive for constructing conversions
+// sycl cannot call recursive func
 template <typename TO, typename FROM>
 inline TO to(FROM val)
 {
-    return to<TO>(val);
+    return TO(val);
 }
 
 // Specializations

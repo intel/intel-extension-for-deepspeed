@@ -23,7 +23,7 @@ class InferenceBuilder(SYCLOpBuilder):
     def sources(self):
         return [
             sycl_kernel_path('csrc/transformer/inference/csrc/softmax.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/gelu.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/pt_binding.cpp'),
         ]
 
     def extra_ldflags(self):
