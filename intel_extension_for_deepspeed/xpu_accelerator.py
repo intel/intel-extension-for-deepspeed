@@ -10,12 +10,12 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         self._communication_backend_name = 'ccl'
         def _check_and_mapping_mpich_env():
             import os
+            if  "RANK" not in os.environ and "PMIX_RANK" in os.environ:
+                os.environ['RANK'] = os.environ.get('PMIX_RANK')
+                print("mapping environment variable PMIX_RANK to RANK")
             if  "RANK" not in os.environ and "PMI_RANK" in os.environ:
                 os.environ['RANK'] = os.environ.get('PMI_RANK')
                 print("mapping environment variable PMI_RANK to RANK")
-            if  "WORLD_SIZE" not in os.environ and "PMI_SIZE" in os.environ:
-                os.environ['WORLD_SIZE'] = os.environ.get('PMI_SIZE')
-                print("mapping environment variable PMI_SIZE to WORLD_SIZE")
         _check_and_mapping_mpich_env()
 
     def is_synchronized_device(self):
