@@ -65,8 +65,6 @@ public:
     /* cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
      */
 
-    /* auto b = sycl::this_group(); */
-    /* auto g = sycl::this_sub_group(); */
     auto b = sycl::ext::oneapi::experimental::this_group<1>();
     auto g = sycl::ext::oneapi::this_sub_group();
     /* auto pos = sycl::ext::oneapi::experimental::this_nd_item<1>(); */

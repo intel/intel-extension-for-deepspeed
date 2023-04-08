@@ -91,9 +91,57 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 }
 
 
+template <typename T>
+at::Tensor& residual_add_bias(at::Tensor& hidden_state,
+                              at::Tensor& residual,
+                              const at::Tensor& attention_output,
+                              const at::Tensor& attention_bias,
+                              const at::Tensor& final_bias,
+                              const int mp_size,
+                              const bool mlp_after_attn,
+                              const bool add_bias,
+                              const bool preln)
+{
+    int bsz = residual.size(0) * residual.size(1);
+    int hidden_size = residual.size(2);
+    if (mlp_after_attn)
+        launch_bias_residual(static_cast<T*>(residual.data_ptr()),
+                             static_cast<T*>(hidden_state.data_ptr()),
+                             static_cast<T*>(attention_output.data_ptr()),
+                             static_cast<T*>(final_bias.data_ptr()),
+                             static_cast<T*>(attention_bias.data_ptr()),
+                             bsz,
+                             hidden_size,
+                             mp_size,
+                             preln,
+                             SyclContext::Instance().GetCurrentStream());
+    /* else */
+    /*     launch_gptj_residual_add<T>( */
+    /*         static_cast<T*>(residual.data_ptr()), */
+    /*         static_cast<T*>(hidden_state.data_ptr()), */
+    /*         static_cast<T*>(attention_output.data_ptr()), */
+    /*         static_cast<T*>(final_bias.data_ptr()), */
+    /*         static_cast<T*>((add_bias ? attention_bias.data_ptr() : nullptr)), */
+    /*         hidden_size, */
+    /*         bsz, */
+    /*         mp_size, */
+    /*         Context::Instance().GetCurrentStream()); */
+    return residual;
+}
+
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (SYCL)");
     m.def("softmax_bf16", &ds_softmax<bf16>, "DeepSpeed SoftMax with bf16 (SYCL)");
     m.def("softmax_fp16", &ds_softmax<half>, "DeepSpeed SoftMax with fp16 (SYCL)");
+    m.def("residual_add_bias_fp32",
+          &residual_add_bias<float>,
+          "DeepSpeed residual add with fp32 (CUDA)");
+    m.def("residual_add_bias_bf16",
+          &residual_add_bias<bf16>,
+          "DeepSpeed residual add with bf16 (CUDA)");
+    m.def("residual_add_bias_fp16",
+          &residual_add_bias<half>,
+          "DeepSpeed residual add with fp16 (CUDA)");
 }
