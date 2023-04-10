@@ -13,12 +13,12 @@
 #error "Unsupported compiler"
 #endif
 #include <cassert>
-#include <ext/oneapi/experimental/bfloat16.hpp>
+#include <ext/oneapi/bfloat16.hpp>
 #include <iostream>
 #include <oneapi/mkl.hpp>
 #include <oneapi/mkl/rng/device.hpp>
 #include <vector>
-using bf16 = sycl::ext::oneapi::experimental::bfloat16;
+using bf16 = sycl::ext::oneapi::bfloat16;
 
 #define WARP_SIZE 32
 #define ONEMKL_OP_T oneapi::mkl::transpose::trans

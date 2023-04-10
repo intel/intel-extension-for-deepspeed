@@ -178,11 +178,11 @@ void fused_bias_residual_layer_norm(bf16* vals,
     int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        vals_arr[i] = bf16::to_float(residual_cast[i * iteration_stride + id]);
+        vals_arr[i] = float(residual_cast[i * iteration_stride + id]);
         sum += vals_arr[i];
     }
     if (high_index < row_stride) {
-        vals_arr[iterations] = bf16::to_float(residual_cast[high_index]);
+        vals_arr[iterations] = float(residual_cast[high_index]);
         sum += vals_arr[iterations];
         iterations++;
     }
@@ -212,7 +212,7 @@ void fused_bias_residual_layer_norm(bf16* vals,
     //     if (g.thread_rank() == 0) means[row] = mean;
     if constexpr (is_mean) {
         if (training)
-            if (sg.get_local_id() == 0) means_cast[row] = bf16::from_float(mean);
+            if (sg.get_local_id() == 0) means_cast[row] = bf16(mean);
     }
     float variance = 0.f;
     for (int i = 0; i < iterations; i++) {
@@ -249,20 +249,20 @@ void fused_bias_residual_layer_norm(bf16* vals,
     // if (training)
     //     if (g.thread_rank() == 0) vars[row] = variance;
     if (training)
-        if (sg.get_local_id() == 0) vars_cast[row] = bf16::from_float(variance);
+        if (sg.get_local_id() == 0) vars_cast[row] = bf16(variance);
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
         vals_arr[i] = vals_arr[i] * rsqrt(variance);
-        vals_arr[i] = vals_arr[i] * bf16::to_float(gamma_cast[i * iteration_stride + id]) +
-                      bf16::to_float(beta_cast[i * iteration_stride + id]);
-        vals_cast[i * iteration_stride + id] = bf16::from_float(vals_arr[i]);
+        vals_arr[i] = vals_arr[i] * float(gamma_cast[i * iteration_stride + id]) +
+                      float(beta_cast[i * iteration_stride + id]);
+        vals_cast[i * iteration_stride + id] = bf16(vals_arr[i]);
     }
     if ((high_index) < row_stride) {
         vals_arr[iterations] = vals_arr[iterations] * rsqrt(variance);
-        vals_arr[iterations] = vals_arr[iterations] * bf16::to_float(gamma[high_index]) +
-                               bf16::to_float(beta[high_index]);
-        vals_cast[high_index] = bf16::from_float(vals_arr[iterations]);
+        vals_arr[iterations] = vals_arr[iterations] * float(gamma[high_index]) +
+                               float(beta[high_index]);
+        vals_cast[high_index] = bf16(vals_arr[iterations]);
     }
 }
 
@@ -811,16 +811,16 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
     ushort* gamma_grad_cast = reinterpret_cast<ushort*>(gamma_grad);
     ushort* betta_grad_cast = reinterpret_cast<ushort*>(betta_grad);
 
-    float betta_reg = (invertible ? bf16::to_float(betta_cast[idx]) : 0.0f);
-    float gamma_reg = bf16::to_float(gamma_cast[idx]);
+    float betta_reg = (invertible ? float(betta_cast[idx]) : 0.0f);
+    float gamma_reg = float(gamma_cast[idx]);
 
     // Loop across matrix height
     float betta_tmp = 0;
     float gamma_tmp = 0;
     for (int r = item_ct1.get_local_id(1); r < rows; r += TILE_DIM) {
-        float grad = bf16::to_float(out_grad_cast[offset]);
-        float val = (invertible ? (bf16::to_float(vals_hat_cast[offset]) - betta_reg) / gamma_reg
-                                : bf16::to_float(vals_hat_cast[offset]));
+        float grad = float(out_grad_cast[offset]);
+        float val = (invertible ? (float(vals_hat_cast[offset]) - betta_reg) / gamma_reg
+                                : float(vals_hat_cast[offset]));
         betta_tmp += grad;
         gamma_tmp += (val * grad);
 
@@ -858,8 +858,8 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
 
     if (item_ct1.get_local_id(2) == 0) {
         int pos = item_ct1.get_group(2) * TILE_DIM + item_ct1.get_local_id(1);
-        betta_grad_cast[pos] = bf16::from_float(s1);
-        gamma_grad_cast[pos] = bf16::from_float(s2);
+        betta_grad_cast[pos] = bf16(s1);
+        gamma_grad_cast[pos] = bf16(s2);
     }
 }
 
@@ -968,9 +968,9 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
     float betta_tmp = 0;
     float gamma_tmp = 0;
     for (int r = item_ct1.get_local_id(1); r < rows; r += TILE_DIM) {
-        float grad = bf16::to_float(out_grad_cast[offset]);
-        float val = bf16::to_float(X_data_cast[offset]);
-        val = (val - bf16::to_float(means_cast[r])) * rsqrt(bf16::to_float(vars_cast[r]));
+        float grad = float(out_grad_cast[offset]);
+        float val = float(X_data_cast[offset]);
+        val = (val - float(means_cast[r])) * rsqrt(float(vars_cast[r]));
         betta_tmp += grad;
         gamma_tmp += (val * grad);
 
@@ -1001,8 +1001,8 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
     }
 
     if (item_ct1.get_local_id(2) == 0) {
-        betta_grad_cast[pos] = bf16::from_float(s1);
-        gamma_grad_cast[pos] = bf16::from_float(s2);
+        betta_grad_cast[pos] = bf16(s1);
+        gamma_grad_cast[pos] = bf16(s2);
     }
 }
 /*
@@ -1183,26 +1183,26 @@ void LayerNormBackward2(const bf16* out_grad,
     int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        float gamma_reg = bf16::to_float(gamma_cast[i * iteration_stride + id]);
-        vals_arr[i] = bf16::to_float(out_grad_cast[i * iteration_stride + id]);
+        float gamma_reg = float(gamma_cast[i * iteration_stride + id]);
+        vals_arr[i] = float(out_grad_cast[i * iteration_stride + id]);
         vals_arr[i] *= gamma_reg;
-        vals_hat_arr[i] = (invertible ? (bf16::to_float(vals_hat_cast[i * iteration_stride + id]) -
-                                         bf16::to_float(betta_cast[i * iteration_stride + id])) /
+        vals_hat_arr[i] = (invertible ? (float(vals_hat_cast[i * iteration_stride + id]) -
+                                         float(betta_cast[i * iteration_stride + id])) /
                                             gamma_reg
-                                      : bf16::to_float(vals_hat_cast[i * iteration_stride + id]));
+                                      : float(vals_hat_cast[i * iteration_stride + id]));
     }
     if ((high_index) < row_stride) {
-        float gamma_reg = bf16::to_float(gamma_cast[high_index]);
-        vals_arr[iterations] = bf16::to_float(out_grad_cast[high_index]);
+        float gamma_reg = float(gamma_cast[high_index]);
+        vals_arr[iterations] = float(out_grad_cast[high_index]);
         vals_arr[iterations] *= gamma_reg;
-        vals_hat_arr[iterations] = (invertible ? (bf16::to_float(vals_hat_cast[high_index]) -
-                                                  bf16::to_float(betta_cast[high_index])) /
+        vals_hat_arr[iterations] = (invertible ? (float(vals_hat_cast[high_index]) -
+                                                  float(betta_cast[high_index])) /
                                                      gamma_reg
-                                               : bf16::to_float(vals_hat_cast[high_index]));
+                                               : float(vals_hat_cast[high_index]));
         iterations++;
     }
 
-    float var_reg = bf16::to_float(vars_cast[row]);
+    float var_reg = float(vars_cast[row]);
 
     float sum = 0;
     for (int i = 0; i < iterations; i++) {
@@ -1262,17 +1262,17 @@ void LayerNormBackward2(const bf16* out_grad,
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[i * iteration_stride + id] = bf16::from_float(
-                (vals_arr[i] - sum) + bf16::to_float(out_grad_add_cast[i * iteration_stride + id]));
+            inp_grad_cast[i * iteration_stride + id] = bf16(
+                (vals_arr[i] - sum) + float(out_grad_add_cast[i * iteration_stride + id]));
         } else {
-            inp_grad_cast[i * iteration_stride + id] = bf16::from_float((vals_arr[i] - sum));
+            inp_grad_cast[i * iteration_stride + id] = bf16((vals_arr[i] - sum));
         }
     if ((high_index) < row_stride)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[high_index] = bf16::from_float(
-                (vals_arr[iterations] - sum) + bf16::to_float(out_grad_add_cast[high_index]));
+            inp_grad_cast[high_index] = bf16(
+                (vals_arr[iterations] - sum) + float(out_grad_add_cast[high_index]));
         } else {
-            inp_grad_cast[high_index] = bf16::from_float((vals_arr[iterations] - sum));
+            inp_grad_cast[high_index] = bf16((vals_arr[iterations] - sum));
         }
 }
 
@@ -1784,24 +1784,24 @@ void LayerNormBackward2(const bf16* out_grad,
     int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        float gamma_reg = bf16::to_float(gamma_cast[i * iteration_stride + id]);
-        vals_arr[i] = bf16::to_float(out_grad_cast[i * iteration_stride + id]);
+        float gamma_reg = float(gamma_cast[i * iteration_stride + id]);
+        vals_arr[i] = float(out_grad_cast[i * iteration_stride + id]);
         vals_arr[i] *= gamma_reg;
     }
     if ((high_index) < row_stride) {
-        float gamma_reg = bf16::to_float(gamma_cast[high_index]);
-        vals_arr[iterations] = bf16::to_float(out_grad_cast[high_index]);
+        float gamma_reg = float(gamma_cast[high_index]);
+        vals_arr[iterations] = float(out_grad_cast[high_index]);
         vals_arr[iterations] *= gamma_reg;
         iterations++;
     }
 
-    float var_reg = bf16::to_float(vars_cast[row]);
-    float mean_reg = bf16::to_float(means_cast[row]);
+    float var_reg = float(vars_cast[row]);
+    float mean_reg = float(means_cast[row]);
 
     float sum = 0;
     float xu[NORM_REG];
     for (int i = 0; i < iterations; i++) {
-        xu[i] = (bf16::to_float(X_vals_cast[i * iteration_stride + id]) - mean_reg);
+        xu[i] = (float(X_vals_cast[i * iteration_stride + id]) - mean_reg);
         sum += vals_arr[i] * xu[i];
         vals_arr[i] *= rsqrt(var_reg);
     }
@@ -1856,17 +1856,17 @@ void LayerNormBackward2(const bf16* out_grad,
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[i * iteration_stride + id] = bf16::from_float(
-                (vals_arr[i] - sum) + bf16::to_float(out_grad_add_cast[i * iteration_stride + id]));
+            inp_grad_cast[i * iteration_stride + id] = bf16(
+                (vals_arr[i] - sum) + float(out_grad_add_cast[i * iteration_stride + id]));
         } else {
-            inp_grad_cast[i * iteration_stride + id] = bf16::from_float(vals_arr[i] - sum);
+            inp_grad_cast[i * iteration_stride + id] = bf16(vals_arr[i] - sum);
         }
     if ((high_index) < row_stride)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[high_index] = bf16::from_float(
-                (vals_arr[iterations] - sum) + bf16::to_float(out_grad_add_cast[high_index]));
+            inp_grad_cast[high_index] = bf16(
+                (vals_arr[iterations] - sum) + float(out_grad_add_cast[high_index]));
         } else {
-            inp_grad_cast[high_index] = bf16::from_float(vals_arr[iterations] - sum);
+            inp_grad_cast[high_index] = bf16(vals_arr[iterations] - sum);
         }
 }
 
