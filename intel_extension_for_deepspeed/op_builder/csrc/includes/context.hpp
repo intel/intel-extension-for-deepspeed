@@ -5,7 +5,15 @@
 #include <ipex.h>
 #include <torch/extension.h>
 #include <torch/library.h>
+#if __has_include(<sycl/sycl.hpp>)
+#include <sycl/sycl.hpp>
+#elif __has_include(<CL/sycl.hpp>)
+#include <CL/sycl.hpp>
+#else
+#error "Unsupported compiler"
+#endif
 #include <cassert>
+#include <ext/oneapi/bfloat16.hpp>
 #include <iostream>
 #include <oneapi/mkl.hpp>
 #include <oneapi/mkl/rng/device.hpp>

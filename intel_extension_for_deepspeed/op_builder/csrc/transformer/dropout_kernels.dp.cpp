@@ -96,10 +96,10 @@ void dropout_kernel(const int N,
         mask[i + 2] = (uint8_t)m[2];
         mask[i + 3] = (uint8_t)m[3];
 
-        out_cast[i] = bf16::from_float(bf16::to_float(Xdata_cast[i]) * scale * m[0]);
-        out_cast[i + 1] = bf16::from_float(bf16::to_float(Xdata_cast[i + 1]) * scale * m[1]);
-        out_cast[i + 2] = bf16::from_float(bf16::to_float(Xdata_cast[i + 2]) * scale * m[2]);
-        out_cast[i + 3] = bf16::from_float(bf16::to_float(Xdata_cast[i + 3]) * scale * m[3]);
+        out_cast[i] = bf16(float(Xdata_cast[i]) * scale * m[0]);
+        out_cast[i + 1] = bf16(float(Xdata_cast[i + 1]) * scale * m[1]);
+        out_cast[i + 2] = bf16(float(Xdata_cast[i + 2]) * scale * m[2]);
+        out_cast[i + 3] = bf16(float(Xdata_cast[i + 3]) * scale * m[3]);
     }
     int high_index = ((((N / unroll_factor) - 1) / item_ct1.get_local_range().get(2) + 1) *
                       (unroll_factor * item_ct1.get_local_range().get(2))) +
@@ -110,7 +110,7 @@ void dropout_kernel(const int N,
         int k = 0;
         for (int i = high_index; i < N; i++) {
             uint8_t m = (uint8_t)(rand_data[k++] > ratio);
-            out_cast[i] = bf16::from_float(bf16::to_float(Xdata_cast[i]) * scale * m);
+            out_cast[i] = bf16(float(Xdata_cast[i]) * scale * m);
             mask[i] = m;
         }
     }
@@ -266,17 +266,17 @@ void dropout_kernel_bwd(const int N,
     {
         int i = j * unroll_factor;
 
-        out_cast[i] = bf16::from_float(mask[i] * bf16::to_float(Xdata_cast[i]) * scale);
-        out_cast[i + 1] = bf16::from_float(mask[i + 1] * bf16::to_float(Xdata_cast[i + 1]) * scale);
-        out_cast[i + 2] = bf16::from_float(mask[i + 2] * bf16::to_float(Xdata_cast[i + 2]) * scale);
-        out_cast[i + 3] = bf16::from_float(mask[i + 3] * bf16::to_float(Xdata_cast[i + 3]) * scale);
+        out_cast[i] = bf16(mask[i] * float(Xdata_cast[i]) * scale);
+        out_cast[i + 1] = bf16(mask[i + 1] * float(Xdata_cast[i + 1]) * scale);
+        out_cast[i + 2] = bf16(mask[i + 2] * float(Xdata_cast[i + 2]) * scale);
+        out_cast[i + 3] = bf16(mask[i + 3] * float(Xdata_cast[i + 3]) * scale);
     }
     int high_index = ((((N / unroll_factor) - 1) / item_ct1.get_local_range().get(2) + 1) *
                       (unroll_factor * item_ct1.get_local_range().get(2))) +
                      item_ct1.get_local_id(2);
     if (N > high_index) {
         for (int i = high_index; i < N; i++) {
-            out_cast[i] = bf16::from_float(mask[i] * bf16::to_float(Xdata_cast[i]) * scale);
+            out_cast[i] = bf16(mask[i] * float(Xdata_cast[i]) * scale);
         }
     }
 }
@@ -449,7 +449,7 @@ void dropout_grad_kernel(const int N,
     ushort* Xdata_cast = reinterpret_cast<ushort*>(Xdata);
     DPCPP_1D_KERNEL_LOOP(i, N)
     {
-        Xdata_cast[i] = bf16::from_float(bf16::to_float(Xdata_cast[i]) * scale * mask[i]);
+        Xdata_cast[i] = bf16(float(Xdata_cast[i]) * scale * mask[i]);
     }
 }
 
@@ -570,7 +570,7 @@ void dropout_grad_kernel(const int N,
     ushort* out_cast = reinterpret_cast<ushort*>(out);
     DPCPP_1D_KERNEL_LOOP(i, N)
     {
-        out_cast[i] = bf16::from_float(bf16::to_float(Xdata_cast[i]) * scale * mask[i]);
+        out_cast[i] = bf16(float(Xdata_cast[i]) * scale * mask[i]);
     }
 }
 
@@ -974,19 +974,19 @@ void dropout_kernel(const int N,
 
         float4 out_data;
         float4 b_data = {
-            bf16::to_float(bias_cast[j % (dim / unroll_factor)].x()),
-            bf16::to_float(bias_cast[j % (dim / unroll_factor)].y()),
-            bf16::to_float(bias_cast[j % (dim / unroll_factor)].z()),
-            bf16::to_float(bias_cast[j % (dim / unroll_factor)].w()),
+            float(bias_cast[j % (dim / unroll_factor)].x()),
+            float(bias_cast[j % (dim / unroll_factor)].y()),
+            float(bias_cast[j % (dim / unroll_factor)].z()),
+            float(bias_cast[j % (dim / unroll_factor)].w()),
         };
-        float4 res_data = {bf16::to_float(residual_cast[j].x()),
-                           bf16::to_float(residual_cast[j].y()),
-                           bf16::to_float(residual_cast[j].z()),
-                           bf16::to_float(residual_cast[j].w())};
-        float4 inp_data = {bf16::to_float(input_cast[j].x()),
-                           bf16::to_float(input_cast[j].y()),
-                           bf16::to_float(input_cast[j].z()),
-                           bf16::to_float(input_cast[j].w())};
+        float4 res_data = {float(residual_cast[j].x()),
+                           float(residual_cast[j].y()),
+                           float(residual_cast[j].z()),
+                           float(residual_cast[j].w())};
+        float4 inp_data = {float(input_cast[j].x()),
+                           float(input_cast[j].y()),
+                           float(input_cast[j].z()),
+                           float(input_cast[j].w())};
 
         out_data.x() = (b_data.x() + inp_data.x());
         out_data.y() = (b_data.y() + inp_data.y());
@@ -1004,10 +1004,10 @@ void dropout_kernel(const int N,
         out_data.w() += res_data.w();
 
         mask_32[j] = m_32;
-        out_cast[j] = {bf16::from_float(out_data.x()),
-                       bf16::from_float(out_data.y()),
-                       bf16::from_float(out_data.z()),
-                       bf16::from_float(out_data.w())};
+        out_cast[j] = {bf16(out_data.x()),
+                       bf16(out_data.y()),
+                       bf16(out_data.z()),
+                       bf16(out_data.w())};
     }
     int high_index = ((((N / unroll_factor) - 1) / item_ct1.get_local_range().get(2) + 1) *
                       (unroll_factor * item_ct1.get_local_range().get(2))) +
@@ -1021,12 +1021,12 @@ void dropout_kernel(const int N,
         float* rand_data = &(rand.x());
         int k = 0;
         for (int i = high_index; i < N; i++) {
-            float x_data = bf16::to_float(input_cast[i]) + bf16::to_float(bias_cast[i % dim]);
+            float x_data = float(input_cast[i]) + float(bias_cast[i % dim]);
             uint8_t m = (uint8_t)(rand_data[k++] > ratio);
             x_data = x_data * scale * m;
-            x_data += bf16::to_float(residual_cast[i]);
+            x_data += float(residual_cast[i]);
 
-            out_cast[i] = bf16::from_float(x_data);
+            out_cast[i] = bf16(x_data);
             mask[i] = m;
         }
     }

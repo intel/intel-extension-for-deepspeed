@@ -145,10 +145,10 @@ void transform_0213<bf16>(bf16* output,
     sycl::ushort4* output_vec = reinterpret_cast<sycl::ushort4*>(output);
 
     sycl::ushort4 inputs_cast = vals_vec[d0 * d0_stride + d1 * d1_stride + d2 * d2_stride + d3];
-    float4 inputs = {bf16::to_float(inputs_cast.x()),
-                     bf16::to_float(inputs_cast.y()),
-                     bf16::to_float(inputs_cast.z()),
-                     bf16::to_float(inputs_cast.w())};
+    float4 inputs = {float(inputs_cast.x()),
+                     float(inputs_cast.y()),
+                     float(inputs_cast.z()),
+                     float(inputs_cast.w())};
 
     sycl::float4 outputs;
     outputs.x() = inputs.x();
@@ -156,10 +156,10 @@ void transform_0213<bf16>(bf16* output,
     outputs.z() = inputs.z();
     outputs.w() = inputs.w();
 
-    ushort4 outputs_cast = {bf16::from_float(outputs.x()),
-                            bf16::from_float(outputs.y()),
-                            bf16::from_float(outputs.z()),
-                            bf16::from_float(outputs.w())};
+    ushort4 outputs_cast = {bf16(outputs.x()),
+                            bf16(outputs.y()),
+                            bf16(outputs.z()),
+                            bf16(outputs.w())};
 
     output_vec[d0 * d0_out_stride + d1 * d1_out_stride + d2 * d2_out_stride + d3] = outputs_cast;
 }
@@ -353,15 +353,15 @@ void bias_add_transform_0213<bf16>(bf16* output,
         vals_vec[d0 * d0_stride * (item_ct1.get_group_range(0) / head_ext) + cnt * d1_stride +
                  d1 * d1_stride * (item_ct1.get_group_range(0) / head_ext) + d2 * d2_stride + d3];
     sycl::ushort4 biases_cast = bias_vec[cnt * d1_stride + d2 * d2_stride + d3];
-    float4 inputs = {bf16::to_float(inputs_cast.x()),
-                     bf16::to_float(inputs_cast.y()),
-                     bf16::to_float(inputs_cast.z()),
-                     bf16::to_float(inputs_cast.w())};
+    float4 inputs = {float(inputs_cast.x()),
+                     float(inputs_cast.y()),
+                     float(inputs_cast.z()),
+                     float(inputs_cast.w())};
 
-    float4 biases = {bf16::to_float(biases_cast.x()),
-                     bf16::to_float(biases_cast.y()),
-                     bf16::to_float(biases_cast.z()),
-                     bf16::to_float(biases_cast.w())};
+    float4 biases = {float(biases_cast.x()),
+                     float(biases_cast.y()),
+                     float(biases_cast.z()),
+                     float(biases_cast.w())};
 
     sycl::float4 outputs;
     outputs.x() = inputs.x() + biases.x();
@@ -369,10 +369,10 @@ void bias_add_transform_0213<bf16>(bf16* output,
     outputs.z() = inputs.z() + biases.z();
     outputs.w() = inputs.w() + biases.w();
 
-    ushort4 outputs_cast = {bf16::from_float(outputs.x()),
-                            bf16::from_float(outputs.y()),
-                            bf16::from_float(outputs.z()),
-                            bf16::from_float(outputs.w())};
+    ushort4 outputs_cast = {bf16(outputs.x()),
+                            bf16(outputs.y()),
+                            bf16(outputs.z()),
+                            bf16(outputs.w())};
     output_vec[cnt * d0_out_stride * item_ct1.get_group_range(2) + d0 * d0_out_stride +
                d1 * d1_out_stride + d2 * d2_out_stride + d3] = outputs_cast;
 }

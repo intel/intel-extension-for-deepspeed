@@ -1,4 +1,15 @@
-#include "compatible.h"
+#if __has_include(<sycl/sycl.hpp>)
+#include <sycl/sycl.hpp>
+using namespace sycl;
+#elif __has_include(<CL/sycl.hpp>)
+#include <CL/sycl.hpp>
+using namespace cl::sycl;
+#else
+#error "Unsupported compiler"
+#endif
+#include <ext/oneapi/bfloat16.hpp>
+
+using bf16 = sycl::ext::oneapi::bfloat16;
 
 inline float gelu(const float x)
 {
@@ -148,14 +159,14 @@ void fused_bias_gelu(const bf16* input,
             ushort4 vals_vec = input_cast[row * row_stride + i * loop_stride + id];
             ushort4 bias_vec = bias_cast[i * loop_stride + id];
 
-            float4 data = {bf16::to_float(vals_vec.x()),
-                           bf16::to_float(vals_vec.y()),
-                           bf16::to_float(vals_vec.z()),
-                           bf16::to_float(vals_vec.w())};
-            float4 bias = {bf16::to_float(bias_vec.x()),
-                           bf16::to_float(bias_vec.y()),
-                           bf16::to_float(bias_vec.z()),
-                           bf16::to_float(bias_vec.w())};
+            float4 data = {float(vals_vec.x()),
+                           float(vals_vec.y()),
+                           float(vals_vec.z()),
+                           float(vals_vec.w())};
+            float4 bias = {float(bias_vec.x()),
+                           float(bias_vec.y()),
+                           float(bias_vec.z()),
+                           float(bias_vec.w())};
 
             data += bias;
 
@@ -164,10 +175,10 @@ void fused_bias_gelu(const bf16* input,
             data.z() = gelu(data.z());
             data.w() = gelu(data.w());
 
-            vals_vec.x() = bf16::from_float(data.x());
-            vals_vec.y() = bf16::from_float(data.y());
-            vals_vec.z() = bf16::from_float(data.z());
-            vals_vec.w() = bf16::from_float(data.w());
+            vals_vec.x() = bf16(data.x());
+            vals_vec.y() = bf16(data.y());
+            vals_vec.z() = bf16(data.z());
+            vals_vec.w() = bf16(data.w());
 
             vals_cast[row * row_stride + i * loop_stride + id] = vals_vec;
         }
@@ -278,21 +289,21 @@ void d_gelu_func(bf16* d_output,
             ushort4 gelu_input_vec = gelu_input_cast[row * row_stride + i * loop_stride + id];
             ushort4 bias_vec = bias_cast[i * loop_stride + id];
 
-            float4 gelu_input_data = {bf16::to_float(gelu_input_vec.x()),
-                                      bf16::to_float(gelu_input_vec.y()),
-                                      bf16::to_float(gelu_input_vec.z()),
-                                      bf16::to_float(gelu_input_vec.w())};
+            float4 gelu_input_data = {float(gelu_input_vec.x()),
+                                      float(gelu_input_vec.y()),
+                                      float(gelu_input_vec.z()),
+                                      float(gelu_input_vec.w())};
             float4 bias_data = {
-                bf16::to_float(bias_vec.x()),
-                bf16::to_float(bias_vec.y()),
-                bf16::to_float(bias_vec.z()),
-                bf16::to_float(bias_vec.w()),
+                float(bias_vec.x()),
+                float(bias_vec.y()),
+                float(bias_vec.z()),
+                float(bias_vec.w()),
             };
             float4 output_data = {
-                bf16::to_float(output_vec.x()),
-                bf16::to_float(output_vec.y()),
-                bf16::to_float(output_vec.z()),
-                bf16::to_float(output_vec.w()),
+                float(output_vec.x()),
+                float(output_vec.y()),
+                float(output_vec.z()),
+                float(output_vec.w()),
             };
 
             gelu_input_data.x() += bias_data.x();
@@ -305,10 +316,10 @@ void d_gelu_func(bf16* d_output,
             output_data.z() *= d_gelu(gelu_input_data.z());
             output_data.w() *= d_gelu(gelu_input_data.w());
 
-            output_vec.x() = bf16::from_float(output_data.x());
-            output_vec.y() = bf16::from_float(output_data.y());
-            output_vec.z() = bf16::from_float(output_data.z());
-            output_vec.w() = bf16::from_float(output_data.w());
+            output_vec.x() = bf16(output_data.x());
+            output_vec.y() = bf16(output_data.y());
+            output_vec.z() = bf16(output_data.z());
+            output_vec.w() = bf16(output_data.w());
             d_output_cast[row * row_stride + i * loop_stride + id] = output_vec;
         }
     }
