@@ -10,10 +10,21 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         self._communication_backend_name = 'ccl'
         def _check_and_mapping_mpich_env():
             import os
-            if  "RANK" not in os.environ and "PMI_RANK" in os.environ:
+            # LOCAL_RANK
+            if "LOCAL_RANK" not in os.environ and "PALS_LOCAL_RANKID" in os.environ:
+                os.environ['LOCAL_RANK'] = os.environ.get('PALS_LOCAL_RANKID')
+                print("mapping environment variable PALS_LOCAL_RANKID to LOCAL_RANK")
+            
+            # RANK
+            if "RANK" not in os.environ and "PMIX_RANK" in os.environ:
+                os.environ['RANK'] = os.environ.get('PMIX_RANK')
+                print("mapping environment variable PMIX_RANK to RANK")
+            if "RANK" not in os.environ and "PMI_RANK" in os.environ:
                 os.environ['RANK'] = os.environ.get('PMI_RANK')
                 print("mapping environment variable PMI_RANK to RANK")
-            if  "WORLD_SIZE" not in os.environ and "PMI_SIZE" in os.environ:
+            
+            # WORLD_SIZE
+            if "WORLD_SIZE" not in os.environ and "PMI_SIZE" in os.environ:
                 os.environ['WORLD_SIZE'] = os.environ.get('PMI_SIZE')
                 print("mapping environment variable PMI_SIZE to WORLD_SIZE")
         _check_and_mapping_mpich_env()
