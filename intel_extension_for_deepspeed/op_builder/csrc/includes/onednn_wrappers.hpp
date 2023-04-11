@@ -8,9 +8,9 @@ using namespace cl::sycl;
 #else
 #error "Unsupported compiler"
 #endif
-#include <ext/oneapi/experimental/bfloat16.hpp>
+#include <ext/oneapi/bfloat16.hpp>
 
-using bf16 = sycl::ext::oneapi::experimental::bfloat16;
+using bf16 = sycl::ext::oneapi::bfloat16;
 
 int onednn_matmul_ex(sycl::queue* handle,
                      bool trans_src,
