@@ -60,7 +60,7 @@ public:
         head_offset(head_offset), mask_stride(mask_stride), mp_size(mp_size),
         iterations(iterations), reduceWidth(reduceWidth){};
 
-  void operator()(sycl::nd_item<1> pos) const {
+  void operator() [[sycl::reqd_sub_group_size(WARP_SIZE)]] (sycl::nd_item<1> pos) const {
     /* cg::thread_block b = cg::this_thread_block(); */
     /* cg::thread_block_tile<WARP_SIZE> g = cg::tiled_partition<WARP_SIZE>(b);
      */

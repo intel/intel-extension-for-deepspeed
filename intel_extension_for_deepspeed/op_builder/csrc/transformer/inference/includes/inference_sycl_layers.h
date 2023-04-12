@@ -23,3 +23,13 @@ template <typename T>
 void launch_bias_residual(T *residual, T *hidden_state, T *attn, T *bias,
                           T *attn_bias, int batch, int hidden_dim, int mp_size,
                           bool preln, sycl::queue stream);
+
+
+template <typename T>
+void launch_bias_add(T *input, const T *bias, int intermediate_size,
+                     int batch_size, sycl::queue stream);
+
+template <typename T>
+void launch_fused_ln(T *output, const T *vals, const T *gamma, const T *beta,
+                     float epsilon, int rows, int elems_per_row,
+                     sycl::queue stream);

@@ -6,6 +6,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include "conversion_utils.h"
 #include "memory_access_utils.h"
 #include "reduction_utils.h"
+#include "inference_sycl_layers.h"
 
 using rop = reduce::ROpType;
 
@@ -28,7 +29,7 @@ Args:
 template <typename T, int unRoll, int threadsPerGroup, int maxThreads>
 class fused_ln {
   T *output;
-  T *vals;
+  const T *vals;
   const T *gamma;
   const T *beta;
   float epsilon;
@@ -48,7 +49,7 @@ public:
      * cg::tiled_partition<hw_warp_size>(tb); */
 
     // auto tb = sycl::ext::oneapi::experimental::this_group<2>();
-    auto tg = sycl::ext::oneapi::this_sub_group();
+    auto warp = sycl::ext::oneapi::this_sub_group();
     // TODO: test for pos
     auto tb = pos.get_group();
     // auto tg = pos.get_sub_group();
@@ -155,7 +156,7 @@ public:
   {                                                                            \
     fused_ln<T, unRollFactor, threadsPerGroup, maxThreads> fn(                 \
         output, vals, gamma, beta, epsilon, elems_per_row);                    \
-    stream.submit([&](sycl::handle &cmd_list) {                                \
+    stream.submit([&](sycl::handler &cmd_list) {                                \
       cmd_list.parallel_for(sycl::nd_range<2>{grid, block}, fn);               \
     });                                                                        \
   }
@@ -192,8 +193,8 @@ void launch_fused_ln(T *output, const T *vals, const T *gamma, const T *beta,
       (rows < groups_per_block_max) ? rows : groups_per_block_max;
   const int groups_launch = (groups_per_block + rows - 1) / groups_per_block;
 
-  sycl::range<2> block{threadsPerGroup, groups_per_block};
-  sycl::range<2> grid{threadsPerGroup, groups_launch * groups_per_block};
+  sycl::range<2> block{(unsigned long)threadsPerGroup, (size_t)groups_per_block};
+  sycl::range<2> grid{(unsigned long)threadsPerGroup, (size_t)(groups_launch * groups_per_block)};
 
   const int elems_per_step = threadsPerGroup * h_per_step;
   const int external_unRoll =
@@ -276,7 +277,7 @@ public:
   fused_residual_ln(T *output, T *res_output, const T *vals, const T *residual,
                     const T *bias, const T *gamma, const T *beta, float epsilon,
                     int elems_per_row)
-      : output(output), res_output(res_output), vals(vals), residual(resudual),
+      : output(output), res_output(res_output), vals(vals), residual(residual),
         bias(bias), gamma(gamma), beta(beta), epsilon(epsilon),
         elems_per_row(elems_per_row) {};
 
@@ -285,7 +286,7 @@ public:
     constexpr int T_per_load = ln::granularity / sizeof(T);
 
     auto tb = pos.get_group();
-    auto tg = sycl::ext::oneapi::this_sub_group();
+    auto warp = sycl::ext::oneapi::this_sub_group();
     // TODO: test for pos
     // auto tb = sycl::ext::oneapi::experimental::this_group<2>();
     // auto tg = pos.get_sub_group();
@@ -402,7 +403,7 @@ public:
 {                                                                                  \
   fused_residual_ln<T, unRollFactor, threadsPerGroup, maxThreads, false> fn(       \
     output, nullptr, vals, residual, bias, gamma, beta, epsilon, elems_per_row);   \
-  stream.submit([&](sycl::handle &cmd_list) {                                      \
+  stream.submit([&](sycl::handler &cmd_list) {                                      \
       cmd_list.parallel_for(sycl::nd_range<2>{grid, block}, fn); });               \
 }
 
@@ -439,9 +440,12 @@ void launch_fused_residual_ln(T *output, const T *vals, const T *residual,
       (rows < groups_per_block_max) ? rows : groups_per_block_max;
   const int groups_launch = (groups_per_block + rows - 1) / groups_per_block;
 
-  dim3 block(threadsPerGroup, groups_per_block);
-  dim3 grid(groups_launch);
+  /* dim3 block(threadsPerGroup, groups_per_block); */
+  /* dim3 grid(groups_launch); */
 
+  sycl::range<2> block{(unsigned long)threadsPerGroup, (size_t)groups_per_block};
+  sycl::range<2> grid{(unsigned long)threadsPerGroup, (size_t)(groups_launch * groups_per_block)};
+  
   const int elems_per_step = threadsPerGroup * h_per_step;
   const int external_unRoll =
       (elems_per_row + elems_per_step - 1) / elems_per_step;
@@ -481,15 +485,15 @@ void launch_fused_residual_ln(T *output, const T *vals, const T *residual,
 template void launch_fused_residual_ln(sycl::half *, const sycl::half *,
                                        const sycl::half *, const sycl::half *,
                                        const sycl::half *, const sycl::half *,
-                                       float, int, int, cudaStream_t);
+                                       float, int, int, sycl::queue);
 
 template void launch_fused_residual_ln(bf16 *, const bf16 *, const bf16 *,
                                        const bf16 *, const bf16 *, const bf16 *,
-                                       float, int, int, cudaStream_t);
+                                       float, int, int, sycl::queue);
 
 template void launch_fused_residual_ln(float *, const float *, const float *,
                                        const float *, const float *,
                                        const float *, float, int, int,
-                                       cudaStream_t);
+                                       sycl::queue);
 
 

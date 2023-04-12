@@ -4,6 +4,7 @@
 #include "compatible.h"
 #include "context.hpp"
 #include "inference_sycl_layers.h"
+#include "onednn_wrappers.hpp"
 
 
 enum class TransformerType : uint8_t { UNKNOWN = 0, GPTType = 1, BERTType = 2 };
@@ -129,6 +130,99 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
     return residual;
 }
 
+template <typename T>
+void ds_layer_norm_internal(T* workspace,
+                            at::Tensor& input,
+                            at::Tensor& gamma,
+                            at::Tensor& beta,
+                            float epsilon)
+{
+    int bsz = input.size(0) * input.size(1);
+    launch_fused_ln(workspace,
+                    (const T*)input.data_ptr(),
+                    (const T*)gamma.data_ptr(),
+                    (const T*)beta.data_ptr(),
+                    epsilon,
+                    bsz,
+                    input.size(2),
+                    SyclContext::Instance().GetCurrentStream());
+}
+
+template <typename T>
+at::Tensor qkv_unfused_sycl(at::Tensor& output,
+                              at::Tensor& input,
+                              at::Tensor& weight,
+                              at::Tensor& q_scale,
+                              at::Tensor& bias,
+                              at::Tensor& gamma,
+                              at::Tensor& beta,
+                              const float epsilon,
+                              bool add_bias,
+                              bool q_int8)
+{
+    int bsz = input.size(0) * input.size(1);
+    T* workspace = (T*)SyclContext::Instance().GetWorkSpace();
+    workspace += (3 * bsz * input.size(2));
+    ds_layer_norm_internal<T>(workspace, input, gamma, beta, epsilon);
+
+    float alpha = (T)1.0;
+    float gemm_beta = (T)0.0;
+
+    /* cublasSetStream(Context::Instance().GetCublasHandle(), */
+    /*                 Context::Instance().GetCurrentStream()); */
+    onednn_matmul_ex(SyclContext::Instance().GetCurrentStream(),
+                     false,
+                     false,
+                     weight.size(1),
+                     bsz,
+                     input.size(2),
+                     alpha,
+                     gemm_beta,
+                     (T*)weight.data_ptr(),
+                     workspace,
+                     (T*)output.data_ptr());
+    
+    if (add_bias)
+        launch_bias_add((T*)output.data_ptr(),
+                        (T*)bias.data_ptr(),
+                        q_int8 ? weight.size(0) : weight.size(1),
+                        bsz,
+                        SyclContext::Instance().GetCurrentStream());
+    return torch::from_blob(workspace, input.sizes(), input.options());
+}
+
+template <typename T>
+std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
+                                    at::Tensor& weight,
+                                    at::Tensor& q_scale,
+                                    at::Tensor& bias,
+                                    at::Tensor& gamma,
+                                    at::Tensor& beta,
+                                    const float epsilon,
+                                    bool add_bias,
+                                    unsigned num_layers,
+                                    bool external_cache,
+                                    unsigned mp_size,
+                                    unsigned rank,
+                                    bool q_int8)
+{
+    int bsz = input.size(0) * input.size(1);
+    T* workspace = (T*)SyclContext::Instance().GetWorkSpace();
+    int out_size = q_int8 ? weight.size(0) : weight.size(1);
+
+    auto options = at::TensorOptions()
+                       .dtype(input.options().dtype())
+                       .layout(at::kStrided)
+                       .device(torch::kXPU)
+                       .requires_grad(false);
+
+    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
+    auto inp_norm = qkv_unfused_sycl<T>(
+        output, input, weight, q_scale, bias, gamma, beta, epsilon, add_bias, q_int8);
+
+    return {output, inp_norm};
+}
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
@@ -137,11 +231,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("softmax_fp16", &ds_softmax<half>, "DeepSpeed SoftMax with fp16 (SYCL)");
     m.def("residual_add_bias_fp32",
           &residual_add_bias<float>,
-          "DeepSpeed residual add with fp32 (CUDA)");
+          "DeepSpeed residual add with fp32 (SYCL)");
     m.def("residual_add_bias_bf16",
           &residual_add_bias<bf16>,
-          "DeepSpeed residual add with bf16 (CUDA)");
+          "DeepSpeed residual add with bf16 (SYCL)");
     m.def("residual_add_bias_fp16",
           &residual_add_bias<half>,
-          "DeepSpeed residual add with fp16 (CUDA)");
+          "DeepSpeed residual add with fp16 (SYCL)");
+    m.def("qkv_gemm_bf16", &ds_qkv_gemm<bf16>, "DeepSpeed qkv gemm with bf16 (SYCL)");
 }

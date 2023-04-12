@@ -24,55 +24,32 @@ enum class ROpType {
 constexpr int max_threads = 1024;
 constexpr int max_warps = max_threads / hw_warp_size;
 
-/*
-High level API. The API takes in a set of operations and variables
-and performs that reduction operation on that variable. The reductions
-of each of the arguments are completely independent of each other (
-i.e., the val1-op1 combination has no impact on val2-op2).
 
-Example usage:
-``` cpp
-float max_val;
-float min_val;
-reduce::block<rop::Max, rop::Min>(tb, warp, max_val, min_val);
-```
-
-TODO(cmikeh2): In theory, we might be able to do this sequentially with
-device functions and rely on the assembler correctly behaving. My initial
-instinct is this won't work, but if it does it would reduce implementation
-cost significantly.
-
-TODO(cmikeh2): We need to support sub-block reductions. The warp intrinsic
-currently supports this (more incidentally than anything else). It is not
-uncommon in something like softmax or a fused attention kernel to map multiple
-reductions to a thread block, but each reduction itself is only scoped
-to part of the threads (i.e block size = 512, 128 threads per reduction).
-*/
 template <ROpType Op, int warp_bound = max_warps>
-void block(sycl::ext::oneapi::experimental::this_group<1>()& tb, 
-           sycl::ext::oneapi::this_sub_group()& warp, 
+void block(sycl::group<2>& tb, 
+           sycl::sub_group& warp, 
            float& val);
 
 template <ROpType Op1, ROpType Op2, int warp_bound = max_warps>
-void block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-           sycl::ext::oneapi::this_sub_group()& warp,
+void block(sycl::group<2>& tb,
+           sycl::sub_group& warp,
            float& val1,
            float& val2);
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, int warp_bound = max_warps>
-void block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                       sycl::ext::oneapi::this_sub_group()& warp,
+void block(sycl::group<2>& tb,
+                       sycl::sub_group& warp,
                        float& val1,
                        float& val2,
                        float& val3);
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int warp_bound = max_warps>
-void block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                       sycl::ext::oneapi::this_sub_group()& warp,
-                       float& val1,
-                       float& val2,
-                       float& val3,
-                       float& val4);
+void block(sycl::group<2>& tb,
+           sycl::sub_group& warp,
+           float& val1,
+           float& val2,
+           float& val3,
+           float& val4);
 
 /*
 The partitioned block is a special case of the above where in the warps of a threadblock are
@@ -87,26 +64,26 @@ After which, each pair of warps would have coherent data with each other. Note, 
 provide correct results if the number of warps per partition is not a power of 2.
 */
 template <ROpType Op, int num_threads>
-void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                                   sycl::ext::oneapi::this_sub_group()& warp,
+void partitioned_block(sycl::group<2>& tb,
+                                   sycl::sub_group& warp,
                                    float& val);
 
 template <ROpType Op1, ROpType Op2, int num_threads>
-void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                                   sycl::ext::oneapi::this_sub_group()& warp,
+void partitioned_block(sycl::group<2>& tb,
+                                   sycl::sub_group& warp,
                                    float& val1,
                                    float& val2);
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, int num_threads>
-void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                                   sycl::ext::oneapi::this_sub_group()& warp,
+void partitioned_block(sycl::group<2>& tb,
+                                   sycl::sub_group& warp,
                                    float& val1,
                                    float& val2,
                                    float& val3);
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int num_threads>
-void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                                   sycl::ext::oneapi::this_sub_group()& warp,
+void partitioned_block(sycl::group<2>& tb,
+                                   sycl::sub_group& warp,
                                    float& val1,
                                    float& val2,
                                    float& val3,
@@ -193,8 +170,8 @@ template <>
 sycl::half2 element<ROpType::Max>(const sycl::half2 lhs, const sycl::half2 rhs)
 {
     sycl::half2 ret_val;
-    ret_val.x = (lhs.x > rhs.x) ? lhs.x : rhs.x;
-    ret_val.y = (lhs.y > rhs.y) ? lhs.y : rhs.y;
+    ret_val[0] = (lhs[0] > rhs[0]) ? lhs[0] : rhs[0];
+    ret_val[1] = (lhs[1] > rhs[1]) ? lhs[1] : rhs[1];
     return ret_val;
 }
 
@@ -202,8 +179,8 @@ template <>
 sycl::half2 element<ROpType::Min>(const sycl::half2 lhs, const sycl::half2 rhs)
 {
     sycl::half2 ret_val;
-    ret_val.x = (lhs.x < rhs.x) ? lhs.x : rhs.x;
-    ret_val.y = (lhs.y < rhs.y) ? lhs.y : rhs.y;
+    ret_val[0] = (lhs[0] < rhs[0]) ? lhs[0] : rhs[0];
+    ret_val[1] = (lhs[1] < rhs[1]) ? lhs[1] : rhs[1];
     return ret_val;
 }
 
@@ -254,22 +231,22 @@ sycl::half init<ROpType::Max>()
 template <>
 sycl::half2 init<ROpType::Add>()
 {
-    constexpr sycl::half2 zero = {0x0000, 0x0000};
-    return sycl::half2(zero);
+    /* constexpr sycl::half2 zero = {0x0000, 0x0000}; */
+    return {0x0000, 0x0000};
 }
 
 template <>
 sycl::half2 init<ROpType::Min>()
 {
-    constexpr sycl::half2 inf = {0x7C00, 0x7C00};
-    return sycl::half2(inf);
+    /* constexpr sycl::half2 inf = {0x7C00, 0x7C00}; */
+    return {0x7C00, 0x7C00};
 }
 
 template <>
 sycl::half2 init<ROpType::Max>()
 {
-    constexpr sycl::half2 neg_inf = {0xFC00, 0xFC00};
-    return sycl::half2(neg_inf);
+    /* constexpr sycl::half2 neg_inf = {0xFC00, 0xFC00}; */
+    return {0xFC00, 0xFC00};
 }
 
 template <ROpType Op, typename T>
@@ -315,7 +292,7 @@ huge overkill that harms readability) that would be wonderful.
 */
 
 template <ROpType Op, int reduce_width = hw_warp_size>
-void _warp(sycl::ext::oneapi::this_sub_group()& warp, float* data)
+void _warp(sycl::sub_group& warp, float* data)
 {
 #pragma unroll
     for (int i = 1; i < reduce_width; i *= 2) {
@@ -324,7 +301,7 @@ void _warp(sycl::ext::oneapi::this_sub_group()& warp, float* data)
 }
 
 template <ROpType Op1, ROpType Op2, int reduce_width = hw_warp_size>
-void _warp(sycl::ext::oneapi::this_sub_group()& warp, float* data)
+void _warp(sycl::sub_group& warp, float* data)
 {
 #pragma unroll
     for (int i = 1; i < reduce_width; i *= 2) {
@@ -334,7 +311,7 @@ void _warp(sycl::ext::oneapi::this_sub_group()& warp, float* data)
 }
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, int reduce_width = hw_warp_size>
-void _warp(sycl::ext::oneapi::this_sub_group()& warp, float* data)
+void _warp(sycl::sub_group& warp, float* data)
 {
 #pragma unroll
     for (int i = 1; i < reduce_width; i *= 2) {
@@ -345,7 +322,7 @@ void _warp(sycl::ext::oneapi::this_sub_group()& warp, float* data)
 }
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int reduce_width = hw_warp_size>
-void _warp(sycl::ext::oneapi::this_sub_group()& warp, float* data)
+void _warp(sycl::sub_group& warp, float* data)
 {
 #pragma unroll
     for (int i = 1; i < reduce_width; i *= 2) {
@@ -373,8 +350,8 @@ block in the default case). This enables us to only perform the warp reduction
 when able to.
 */
 template <int total_warps, ROpType... Ops>
-void _block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                        sycl::ext::oneapi::this_sub_group()& warp_arg,
+void _block(sycl::group<2>& tb,
+                        sycl::sub_group& warp_arg,
                         float* data,
                         int warp_offset)
 {
@@ -383,14 +360,14 @@ void _block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
     constexpr int bytes = sizeof(float);
     // Unused when `partition_size == 1` or total_warps == 1
     /* __shared__ float reduce_buffer[max_warps * elems]; */
-    auto partialSum = local_ptr<float>(local_ptr<void>(sycl::ext::oneapi::group_local_memory<float[max_warps * elems]>(b).get()));
+    auto reduce_buffer = __group_local_memory<float[max_warps * elems]>(tb);
 
     // Always perform warp-scope reduction
     _warp<Ops...>(warp_arg, data);
 
     // If max_warps == 1 let's skip the runtime check
     // TODO: meta_group_size replacement
-    if (warp_arg.get_group_range() > 1 && total_warps != 1) {
+    if (warp_arg.get_group_range().size() > 1 && total_warps != 1) {
         if (warp_arg.get_local_id() == 0) {
 #pragma unroll
             for (int i = 0; i < elems; i++) {
@@ -443,15 +420,15 @@ option, but the nature of using a pointer is a little less safe and this allows
 us to obfuscate the details of the partitioned implementation.
 */
 template <ROpType Op, int warp_bound>
-void block(sycl::ext::oneapi::experimental::this_group<1>()& tb, 
-           sycl::ext::oneapi::this_sub_group()& warp, float& val)
+void block(sycl::group<2>& tb, 
+           sycl::sub_group& warp, float& val)
 {
     _block<warp_bound, Op>(tb, warp, &val, 0);
 }
 
 template <ROpType Op1, ROpType Op2, int warp_bound>
-void block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                       sycl::ext::oneapi::this_sub_group()& warp,
+void block(sycl::group<2>& tb,
+                       sycl::sub_group& warp,
                        float& val1,
                        float& val2)
 {
@@ -462,8 +439,8 @@ void block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
 }
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, int warp_bound>
-void block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                       sycl::ext::oneapi::this_sub_group()& warp,
+void block(sycl::group<2>& tb,
+                       sycl::sub_group& warp,
                        float& val1,
                        float& val2,
                        float& val3)
@@ -476,12 +453,12 @@ void block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
 }
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int warp_bound>
-void block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                       sycl::ext::oneapi::this_sub_group()& warp,
-                       float& val1,
-                       float& val2,
-                       float& val3,
-                       float& val4)
+void block(sycl::group<2>& tb,
+           sycl::sub_group& warp,
+           float& val1,
+           float& val2,
+           float& val3,
+           float& val4)
 {
     float data[4] = {val1, val2, val3, val4};
     _block<warp_bound, Op1, Op2, Op3, Op4>(tb, warp, data, 0);
@@ -496,9 +473,9 @@ Note: for the partitioned blocks, the implementation does not support non-power 
 to shorten block scale reduction length.
 */
 template <ROpType Op, int num_threads>
-void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                                   sycl::ext::oneapi::this_sub_group()& warp,
-                                   float& val)
+void partitioned_block(sycl::group<2>& tb,
+                       sycl::sub_group& warp,
+                       float& val)
 {
     if (num_threads <= hw_warp_size) {
         _warp<Op, num_threads>(warp, &val);
@@ -510,8 +487,8 @@ void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
 }
 
 template <ROpType Op1, ROpType Op2, int num_threads>
-void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                                   sycl::ext::oneapi::this_sub_group()& warp,
+void partitioned_block(sycl::group<2>& tb,
+                                   sycl::sub_group& warp,
                                    float& val1,
                                    float& val2)
 {
@@ -530,8 +507,8 @@ void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
 }
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, int num_threads>
-void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                                   sycl::ext::oneapi::this_sub_group()& warp,
+void partitioned_block(sycl::group<2>& tb,
+                                   sycl::sub_group& warp,
                                    float& val1,
                                    float& val2,
                                    float& val3)
@@ -552,12 +529,12 @@ void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
 }
 
 template <ROpType Op1, ROpType Op2, ROpType Op3, ROpType Op4, int num_threads>
-void partitioned_block(sycl::ext::oneapi::experimental::this_group<1>()& tb,
-                                   sycl::ext::oneapi::this_sub_group()& warp,
-                                   float& val1,
-                                   float& val2,
-                                   float& val3,
-                                   float& val4)
+void partitioned_block(sycl::group<2>& tb,
+                       sycl::sub_group& warp,
+                       float& val1,
+                       float& val2,
+                       float& val3,
+                       float& val4)
 {
     float data[4] = {val1, val2, val3, val4};
 

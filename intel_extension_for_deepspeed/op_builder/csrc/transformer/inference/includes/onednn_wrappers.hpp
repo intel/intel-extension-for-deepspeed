@@ -12,7 +12,7 @@ using namespace cl::sycl;
 #include "compatible.h"
 
 
-int onednn_matmul_ex(sycl::queue* handle,
+int onednn_matmul_ex(sycl::queue handle,
                      bool trans_src,
                      bool trans_wgt,
                      int m,
@@ -24,7 +24,7 @@ int onednn_matmul_ex(sycl::queue* handle,
                      const bf16* wgt_ptr,
                      bf16* dst_ptr);
 
-int onednn_batchgemm(sycl::queue* handle,
+int onednn_batchgemm(sycl::queue handle,
                      int m,
                      int n,
                      int k,
