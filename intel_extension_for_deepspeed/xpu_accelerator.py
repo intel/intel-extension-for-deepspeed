@@ -15,6 +15,11 @@ class XPU_Accelerator(DeepSpeedAccelerator):
                 os.environ['LOCAL_RANK'] = os.environ.get('PALS_LOCAL_RANKID')
                 print("mapping environment variable PALS_LOCAL_RANKID to LOCAL_RANK")
             
+            # LOCAL_SIZE
+            if "LOCAL_SIZE" not in os.environ and "PALS_LOCAL_SIZE" in os.environ:
+                os.environ['LOCAL_SIZE'] = os.environ.get('PALS_LOCAL_SIZE')
+                print("mapping environment variable PALS_LOCAL_SIZE to LOCAL_SIZE")
+            
             # RANK
             if "RANK" not in os.environ and "PMIX_RANK" in os.environ:
                 os.environ['RANK'] = os.environ.get('PMIX_RANK')
