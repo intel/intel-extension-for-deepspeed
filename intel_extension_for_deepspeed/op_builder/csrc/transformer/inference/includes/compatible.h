@@ -9,7 +9,6 @@ using namespace cl::sycl;
 #else
 #error "Unsupported compiler"
 #endif
-#include <ext/oneapi/experimental/bfloat16.hpp>
 
 #define __global__
 #define __device__
@@ -26,43 +25,43 @@ using float4 = sycl::vec<float, 4>;
 using float2 = sycl::vec<float, 2>;
 using half4 = sycl::vec<half, 4>;
 using half2 = sycl::vec<half, 2>;
-/* using bf164 = sycl::vec<bf16, 4>; */
-/* using bf162 = sycl::vec<bf16, 2>; */
+using bf164 = sycl::vec<bf16, 4>;
+using bf162 = sycl::vec<bf16, 2>;
 using uint4 = sycl::vec<uint, 4>;
 using uint2 = sycl::vec<uint, 2>;
 
 inline int next_pow2(const int val)
-{   
-  int rounded_val = val - 1;
-  rounded_val |= rounded_val >> 1;
-  rounded_val |= rounded_val >> 2;
-  rounded_val |= rounded_val >> 4;
-  rounded_val |= rounded_val >> 8;                
-  return rounded_val + 1;                         
+{
+    int rounded_val = val - 1;
+    rounded_val |= rounded_val >> 1;
+    rounded_val |= rounded_val >> 2;
+    rounded_val |= rounded_val >> 4;
+    rounded_val |= rounded_val >> 8;
+    return rounded_val + 1;
 }
 
 template <typename T, typename Group, typename... Args>
-std::enable_if_t<std::is_trivially_destructible<T>::value &&
-                     sycl::detail::is_group<Group>::value,
+std::enable_if_t<std::is_trivially_destructible<T>::value && sycl::detail::is_group<Group>::value,
                  sycl::local_ptr<typename std::remove_extent<T>::type>>
-    __SYCL_ALWAYS_INLINE __group_local_memory(Group g, Args &&...args) {
-  (void)g;
+    __SYCL_ALWAYS_INLINE __group_local_memory(Group g, Args&&... args)
+{
+    (void)g;
 #ifdef __SYCL_DEVICE_ONLY__
-  __attribute__((opencl_local)) std::uint8_t *AllocatedMem =
-      __sycl_allocateLocalMemory(sizeof(T), alignof(T));
+    __attribute__((opencl_local))
+    std::uint8_t* AllocatedMem = __sycl_allocateLocalMemory(sizeof(T), alignof(T));
 
-  // TODO switch to using group::get_local_linear_id here once it's implemented
-  id<3> Id = __spirv::initLocalInvocationId<3, id<3>>();
-  if (Id == id<3>(0, 0, 0))
-    new (AllocatedMem) T(std::forward<Args>(args)...);
-  sycl::detail::workGroupBarrier();
-  return reinterpret_cast<
-      __attribute__((opencl_local)) typename std::remove_extent<T>::type *>(AllocatedMem);
+    if constexpr (!std::is_trivial_v<T>) {
+        id<3> Id = __spirv::initLocalInvocationId<3, id<3>>();
+        if (Id == id<3>(0, 0, 0)) new (AllocatedMem) T(std::forward<Args>(args)...);
+        sycl::detail::workGroupBarrier();
+    }
+    return reinterpret_cast<__attribute__((opencl_local)) typename std::remove_extent<T>::type*>(
+        AllocatedMem);
 #else
-  // Silence unused variable warning
-  [&args...] {}();
-  throw sycl::feature_not_supported(
-      "sycl_ext_oneapi_local_memory extension is not supported on host device",
-      PI_ERROR_INVALID_OPERATION);
+    // Silence unused variable warning
+    [&args...] {}();
+    throw sycl::feature_not_supported(
+        "sycl_ext_oneapi_local_memory extension is not supported on host device",
+        PI_ERROR_INVALID_OPERATION);
 #endif
 }
