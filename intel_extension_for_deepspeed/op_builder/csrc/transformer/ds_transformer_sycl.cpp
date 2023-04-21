@@ -172,7 +172,7 @@ void BertTransformerLayer<T>::Forward(int bsz,
                                       T* gelu_inp_ptr,
                                       T* ff2_inp_ptr)
 {
-    if (!_stochastic_mode) _stream->wait();
+    if (!_stochastic_mode) _stream.wait();
 
     T* workspace = static_cast<T*>(::SyclContext::Instance().GetWorkSpace());
     size_t small_buf_size = bsz * _seq_length * _hidden_size;
@@ -340,7 +340,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                        T* grad_norm_w_ptr,
                                        T* grad_norm_b_ptr)
 {
-    if (!_stochastic_mode) _stream->wait();
+    if (!_stochastic_mode) _stream.wait();
 
     T* workspace = static_cast<T*>(::SyclContext::Instance().GetWorkSpace());
     size_t small_buf_size = bsz * _seq_length * _hidden_size;
@@ -353,7 +353,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
                                    : buf_3 + small_buf_size);
     T* ctx_bufB_ptr_recomp = ff2_buf + (_seq_length * _seq_length * bsz * _heads);
 
-    sycl::queue* streams[2] = {_stream, _stream};
+    sycl::queue streams[2] = {_stream, _stream};
 
     int bsz_seq = bsz * _seq_length;
     int bsz_heads = bsz * _heads;
@@ -507,11 +507,11 @@ void BertTransformerLayer<T>::Backward(int bsz,
     // this case, buf_1 connected with buf_2 and buf_3 are all inputs
     launch_transform4d_0213(ff2_buf, buf_1, bsz, _heads, _seq_length, _hidden_size, _stream, 3);
 
-    T* grad_out_buffer = (T*)malloc_shared(10 * sizeof(T), *_stream);
-    T* input_buffer = (T*)malloc_shared(10 * sizeof(T), *_stream);
-    T* weight_buffer = (T*)malloc_shared(10 * sizeof(T), *_stream);
-    T* grad_weight_buffer = (T*)malloc_shared(10 * sizeof(T), *_stream);
-    T* grad_bias_buffer = (T*)malloc_shared(10 * sizeof(T), *_stream);
+    T* grad_out_buffer = (T*)malloc_shared(10 * sizeof(T), _stream);
+    T* input_buffer = (T*)malloc_shared(10 * sizeof(T), _stream);
+    T* weight_buffer = (T*)malloc_shared(10 * sizeof(T), _stream);
+    T* grad_weight_buffer = (T*)malloc_shared(10 * sizeof(T), _stream);
+    T* grad_bias_buffer = (T*)malloc_shared(10 * sizeof(T), _stream);
     if (_pre_or_postLayerNorm) {
         _qkv_linear.Backward(bsz_seq,
                              ff2_buf,
@@ -561,7 +561,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
         }
     } else {
         launch_fused_add2<T>(grad_input_ptr, buf_2, buf_0, bsz, _seq_length, _hidden_size, _stream);
-        _stream->submit([&](sycl::handler& cgh) {
+        _stream.submit([&](sycl::handler& cgh) {
             cgh.single_task([=]() {
                 for (int i = 0; i < 10; ++i) {
                     grad_out_buffer[i] = ff2_buf[i];
@@ -574,7 +574,7 @@ void BertTransformerLayer<T>::Backward(int bsz,
         });
     }
 
-    _stream->wait();
+    _stream.wait();
 }
 
 template <typename T>

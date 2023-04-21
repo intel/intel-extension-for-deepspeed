@@ -7,7 +7,7 @@
 #error "Unsupported compiler"
 #endif
 
-int onemkl_gemm_ex(sycl::queue* handle,
+int onemkl_gemm_ex(sycl::queue handle,
                    oneapi::mkl::transpose transa,
                    oneapi::mkl::transpose transb,
                    int m,
@@ -24,7 +24,7 @@ int onemkl_gemm_ex(sycl::queue* handle,
         int ldb = (transb == oneapi::mkl::transpose::nontrans) ? k : n;
         int ldc = m;
         oneapi::mkl::blas::gemm(
-            *handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+            handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     } catch (sycl::exception const& exc) {
         std::cerr << exc.what() << "Exception caught at file:" << __FILE__ << ", line:" << __LINE__
                   << std::endl;
@@ -32,7 +32,7 @@ int onemkl_gemm_ex(sycl::queue* handle,
     }
 }
 
-int onemkl_gemm_ex(sycl::queue* handle,
+int onemkl_gemm_ex(sycl::queue handle,
                    oneapi::mkl::transpose transa,
                    oneapi::mkl::transpose transb,
                    int m,
@@ -49,7 +49,7 @@ int onemkl_gemm_ex(sycl::queue* handle,
         int ldb = (transb == oneapi::mkl::transpose::nontrans) ? k : n;
         int ldc = m;
         oneapi::mkl::blas::gemm(
-            *handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+            handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     } catch (sycl::exception const& exc) {
         std::cerr << exc.what() << "Exception caught at file:" << __FILE__ << ", line:" << __LINE__
                   << std::endl;
@@ -57,7 +57,7 @@ int onemkl_gemm_ex(sycl::queue* handle,
     }
 }
 
-int onemkl_strided_batched_gemm(sycl::queue* handle,
+int onemkl_strided_batched_gemm(sycl::queue handle,
                                 int m,
                                 int n,
                                 int k,
@@ -78,7 +78,7 @@ int onemkl_strided_batched_gemm(sycl::queue* handle,
         int lda = (transa == oneapi::mkl::transpose::nontrans) ? m : k;
         int ldb = (transb == oneapi::mkl::transpose::nontrans) ? k : n;
         int ldc = m;
-        oneapi::mkl::blas::gemm_batch(*handle,
+        oneapi::mkl::blas::gemm_batch(handle,
                                       transa,
                                       transb,
                                       m,
@@ -103,7 +103,7 @@ int onemkl_strided_batched_gemm(sycl::queue* handle,
     }
 }
 
-int onemkl_strided_batched_gemm(sycl::queue* handle,
+int onemkl_strided_batched_gemm(sycl::queue handle,
                                 int m,
                                 int n,
                                 int k,
@@ -124,7 +124,7 @@ int onemkl_strided_batched_gemm(sycl::queue* handle,
         int lda = (transa == oneapi::mkl::transpose::nontrans) ? m : k;
         int ldb = (transb == oneapi::mkl::transpose::nontrans) ? k : n;
         int ldc = m;
-        oneapi::mkl::blas::gemm_batch(*handle,
+        oneapi::mkl::blas::gemm_batch(handle,
                                       transa,
                                       transb,
                                       m,

@@ -45,13 +45,13 @@ void Transpose<sycl::half>(const sycl::half* inp_mat,
                            sycl::half* out_mat,
                            int rows,
                            int cols,
-                           sycl::queue* stream)
+                           sycl::queue stream)
 {
     int threads = THREADS;
 
     sycl::range<3> grid_dim(1, 1, (rows * cols + threads - 1) / threads);
     sycl::range<3> block_dim(1, 1, threads);
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         sycl::accessor<sycl::half, 1, sycl::access::mode::read_write, sycl::access::target::local>
             data_block_acc_ct1(sycl::range<1>(rows_trans * (cols_trans + 1)), cgh);
         cgh.parallel_for(sycl::nd_range<3>(grid_dim, block_dim), [=](sycl::nd_item<3> item_ct1) {
@@ -62,13 +62,13 @@ void Transpose<sycl::half>(const sycl::half* inp_mat,
 }
 
 template <>
-void Transpose<float>(const float* inp_mat, float* out_mat, int rows, int cols, sycl::queue* stream)
+void Transpose<float>(const float* inp_mat, float* out_mat, int rows, int cols, sycl::queue stream)
 {
     int threads = THREADS;
     sycl::range<3> grid_dim(1, 1, (rows * cols + threads - 1) / threads);
     sycl::range<3> block_dim(1, 1, threads);
 
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         sycl::accessor<float, 1, sycl::access::mode::read_write, sycl::access::target::local>
             data_block_acc_ct1(sycl::range<1>(rows_trans * (cols_trans + 1)), cgh);
         cgh.parallel_for(
@@ -203,14 +203,14 @@ void launch_transform_0213<float>(float* output,
                                   int seq_length,
                                   int hidden_dim,
                                   int heads,
-                                  sycl::queue* stream)
+                                  sycl::queue stream)
 {
     hidden_dim >>= 2;
     int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
     sycl::range<3> block_dim(1, (heads / head_ext), hidden_dim / heads);
     sycl::range<3> grid_dim(1, (seq_length * head_ext), batch_size);
 
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(sycl::nd_range<3>(grid_dim * block_dim, block_dim),
                          [=](sycl::nd_item<3> item_ct1) {
                              transform_0213<float>(
@@ -226,14 +226,14 @@ void launch_transform_0213<bf16>(bf16* output,
                                  int seq_length,
                                  int hidden_dim,
                                  int heads,
-                                 sycl::queue* stream)
+                                 sycl::queue stream)
 {
     hidden_dim >>= 2;
     int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
     sycl::range<3> block_dim(1, (heads / head_ext), hidden_dim / heads);
     sycl::range<3> grid_dim(1, (seq_length * head_ext), batch_size);
 
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(sycl::nd_range<3>(grid_dim * block_dim, block_dim),
                          [=](sycl::nd_item<3> item_ct1) {
                              transform_0213<bf16>(
@@ -249,14 +249,14 @@ void launch_transform_0213<sycl::half>(sycl::half* output,
                                        int seq_length,
                                        int hidden_dim,
                                        int heads,
-                                       sycl::queue* stream)
+                                       sycl::queue stream)
 {
     hidden_dim >>= 3;
     int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
     sycl::range<3> block_dim(1, (heads / head_ext), hidden_dim / heads);
     sycl::range<3> grid_dim(1, (seq_length * head_ext), batch_size);
 
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(sycl::nd_range<3>(grid_dim * block_dim, block_dim),
                          [=](sycl::nd_item<3> item_ct1) {
                              transform_0213<sycl::half>(
@@ -532,7 +532,7 @@ void launch_bias_add_transform_0213<float>(float* output,
                                            int seq_length,
                                            int hidden_dim,
                                            int heads,
-                                           sycl::queue* stream,
+                                           sycl::queue stream,
                                            int trans_count)
 {
     hidden_dim >>= 2;
@@ -541,7 +541,7 @@ void launch_bias_add_transform_0213<float>(float* output,
     sycl::range<3> block_dim(1, (heads / head_ext), hidden_dim / heads);
     sycl::range<3> grid_dim((trans_count * head_ext), seq_length, batch_size);
 
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(
             sycl::nd_range<3>(grid_dim * block_dim, block_dim), [=](sycl::nd_item<3> item_ct1) {
                 bias_add_transform_0213<float>(
@@ -560,7 +560,7 @@ void launch_bias_add_transform_0213<bf16>(bf16* output,
                                           int seq_length,
                                           int hidden_dim,
                                           int heads,
-                                          sycl::queue* stream,
+                                          sycl::queue stream,
                                           int trans_count)
 {
     hidden_dim >>= 2;
@@ -569,7 +569,7 @@ void launch_bias_add_transform_0213<bf16>(bf16* output,
     sycl::range<3> block_dim(1, (heads / head_ext), hidden_dim / heads);
     sycl::range<3> grid_dim((trans_count * head_ext), seq_length, batch_size);
 
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(
             sycl::nd_range<3>(grid_dim * block_dim, block_dim), [=](sycl::nd_item<3> item_ct1) {
                 bias_add_transform_0213<bf16>(
@@ -588,7 +588,7 @@ void launch_bias_add_transform_0213<sycl::half>(sycl::half* output,
                                                 int seq_length,
                                                 int hidden_dim,
                                                 int heads,
-                                                sycl::queue* stream,
+                                                sycl::queue stream,
                                                 int trans_count)
 {
     hidden_dim >>= 3;
@@ -596,7 +596,7 @@ void launch_bias_add_transform_0213<sycl::half>(sycl::half* output,
         int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
         sycl::range<3> block_dim(1, (heads / head_ext), hidden_dim / heads);
         sycl::range<3> grid_dim((trans_count * head_ext), seq_length, batch_size);
-        stream->submit([&](sycl::handler& cgh) {
+        stream.submit([&](sycl::handler& cgh) {
             cgh.parallel_for(
                 sycl::nd_range<3>(grid_dim * block_dim, block_dim), [=](sycl::nd_item<3> item_ct1) {
                     bias_add_transform_0213<sycl::half>(
@@ -608,7 +608,7 @@ void launch_bias_add_transform_0213<sycl::half>(sycl::half* output,
     } else {
         sycl::range<3> block_dim(trans_count, heads, hidden_dim / heads);
         sycl::range<3> grid_dim(1, seq_length / 2, batch_size);
-        stream->submit([&](sycl::handler& cgh) {
+        stream.submit([&](sycl::handler& cgh) {
             sycl::accessor<sycl::float4,
                            1,
                            sycl::access::mode::read_write,
@@ -808,13 +808,13 @@ void launch_transform4d_0213<float>(float* out,
                                     int heads,
                                     int seq_length,
                                     int hidden_dim,
-                                    sycl::queue* stream,
+                                    sycl::queue stream,
                                     int trans_count)
 {
     hidden_dim >>= 2;
     sycl::range<3> grid_dims(trans_count, heads * ((seq_length - 1) / 8 + 1), batch_size);
     sycl::range<3> block_dims(1, 8, hidden_dim / heads);
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(
             sycl::nd_range<3>(grid_dims * block_dims, block_dims), [=](sycl::nd_item<3> item_ct1) {
                 transform4d_0213<float>(out, in, heads, seq_length, hidden_dim, 1, item_ct1);
@@ -832,13 +832,13 @@ void launch_transform4d_0213<bf16>(bf16* out,
                                    int heads,
                                    int seq_length,
                                    int hidden_dim,
-                                   sycl::queue* stream,
+                                   sycl::queue stream,
                                    int trans_count)
 {
     hidden_dim >>= 2;
     sycl::range<3> grid_dims(trans_count, heads * ((seq_length - 1) / 8 + 1), batch_size);
     sycl::range<3> block_dims(1, 8, hidden_dim / heads);
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(
             sycl::nd_range<3>(grid_dims * block_dims, block_dims), [=](sycl::nd_item<3> item_ct1) {
                 transform4d_0213<bf16>(out, in, heads, seq_length, hidden_dim, 1, item_ct1);
@@ -856,7 +856,7 @@ void launch_transform4d_0213<sycl::half>(sycl::half* out,
                                          int heads,
                                          int seq_length,
                                          int hidden_dim,
-                                         sycl::queue* stream,
+                                         sycl::queue stream,
                                          int trans_count)
 {
     hidden_dim >>= 3;
@@ -864,7 +864,7 @@ void launch_transform4d_0213<sycl::half>(sycl::half* out,
         int head_ext = (hidden_dim - 1) / MAX_THREADS + 1;
         sycl::range<3> grid_dims((seq_length * head_ext), trans_count, batch_size);
         sycl::range<3> block_dims(1, (heads / head_ext), hidden_dim / heads);
-        stream->submit([&](sycl::handler& cgh) {
+        stream.submit([&](sycl::handler& cgh) {
             cgh.parallel_for(sycl::nd_range<3>(grid_dims * block_dims, block_dims),
                              [=](sycl::nd_item<3> item_ct1) {
                                  transform4d_0213<sycl::half>(
@@ -874,7 +874,7 @@ void launch_transform4d_0213<sycl::half>(sycl::half* out,
     } else {
         sycl::range<3> grid_dims(1, seq_length / 2, batch_size);
         sycl::range<3> block_dims(trans_count, heads, hidden_dim / heads);
-        stream->submit([&](sycl::handler& cgh) {
+        stream.submit([&](sycl::handler& cgh) {
             sycl::accessor<sycl::float4,
                            1,
                            sycl::access::mode::read_write,

@@ -19,7 +19,7 @@ void launch_fused_add2(T* out,
                        int batch_size,
                        int seq_length,
                        int hidden_size,
-                       sycl::queue* stream);
+                       sycl::queue stream);
 
 template <typename T>
 void launch_fused_add4(T* out,
@@ -30,7 +30,7 @@ void launch_fused_add4(T* out,
                        int batch_size,
                        int seq_length,
                        int hidden_size,
-                       sycl::queue* stream);
+                       sycl::queue stream);
 
 template <typename T>
 void launch_fused_add3(T* out,
@@ -40,4 +40,4 @@ void launch_fused_add3(T* out,
                        int batch_size,
                        int seq_length,
                        int hidden_size,
-                       sycl::queue* stream);
+                       sycl::queue stream);

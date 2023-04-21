@@ -43,7 +43,7 @@ void Adagrad_Optimizer::Step_1(float* _params,
             size_t copy_size = TILE;
             if ((t + TILE) > _param_size) copy_size = _param_size - t;
             size_t offset = copy_size + t;
-            if ((t / TILE) >= 2) { _streams[_buf_index]->wait(); }
+            if ((t / TILE) >= 2) { _streams[_buf_index].wait(); }
 #pragma omp parallel for
             for (size_t k = t; k < offset; k++) {
                 float grad = half_precision ? (float)grads_cast_h[k] : grads[k];

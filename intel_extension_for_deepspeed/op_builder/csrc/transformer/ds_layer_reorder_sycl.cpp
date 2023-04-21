@@ -26,7 +26,7 @@ std::vector<torch::Tensor> transform4d_0213(const torch::Tensor& input,
         // for 1 attn_o_inp, trans_count=1
         output = torch::empty({batch, seq_len, num_heads, hidden_size / num_heads}, options);
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     const T* input_ptr = (const T*)input.data_ptr();
     T* output_ptr = (T*)output.data_ptr();
@@ -57,7 +57,7 @@ std::vector<torch::Tensor> bias_add_transform_0213(const torch::Tensor& input,
 
     auto output = torch::empty({3, batch, num_heads, seq_len, hidden_size / num_heads}, options);
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     const T* input_ptr = (const T*)input.data_ptr();
     const T* bias_ptr = (const T*)bias.data_ptr();
@@ -84,7 +84,7 @@ std::vector<torch::Tensor> transform_0213(const torch::Tensor& input,
 
     auto output = torch::empty({batch, num_heads, seq_len, hidden_size / num_heads}, options);
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     const T* input_ptr = (const T*)input.data_ptr();
     T* output_ptr = (T*)output.data_ptr();
@@ -111,7 +111,7 @@ std::vector<torch::Tensor> fused_add2(const torch::Tensor& input1,
 
     auto output = torch::empty({batch, seq_len, hidden_size}, options);
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     const T* input_ptr1 = (const T*)input1.data_ptr();
     const T* input_ptr2 = (const T*)input2.data_ptr();

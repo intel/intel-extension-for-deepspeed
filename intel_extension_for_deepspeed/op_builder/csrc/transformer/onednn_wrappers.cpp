@@ -1,8 +1,9 @@
 #include "onednn_wrappers.hpp"
+#include "inference_sycl_layers.h"
 #include <oneapi/dnnl/dnnl_sycl.hpp>
 
 template <bool bmm>
-inline int onednn_matmul(sycl::queue* handle,
+inline int onednn_matmul(sycl::queue handle,
                          bool trans_src,
                          bool trans_wgt,
                          int m,
@@ -20,10 +21,10 @@ inline int onednn_matmul(sycl::queue* handle,
      * wgt, [k, n], n: k: in_features, out_feature
      * dst, [m, n], m: batch, n: out_features
      */
-    device dev = handle->get_device();
-    context ctx = handle->get_context();
+    device dev = handle.get_device();
+    context ctx = handle.get_context();
     dnnl::engine engine = dnnl::sycl_interop::make_engine(dev, ctx);
-    dnnl::stream stream = dnnl::sycl_interop::make_stream(engine, *handle);
+    dnnl::stream stream = dnnl::sycl_interop::make_stream(engine, handle);
 
     dnnl::memory::dims src_dims, wgt_dims, dst_dims;
 
@@ -90,10 +91,10 @@ inline int onednn_matmul(sycl::queue* handle,
     matmul_args.insert({DNNL_ARG_DST, dst_mem});
 
     matmul_prim.execute(stream, matmul_args);
-    stream.wait();
+    /* stream.wait(); */
 }
 
-int onednn_matmul_ex(sycl::queue* handle,
+int onednn_matmul_ex(sycl::queue handle,
                      bool trans_src,
                      bool trans_wgt,
                      int m,
@@ -109,7 +110,7 @@ int onednn_matmul_ex(sycl::queue* handle,
         handle, trans_src, trans_wgt, m, n, k, alpha, beta, src_ptr, wgt_ptr, dst_ptr, 1);
 }
 
-int onednn_batchgemm(sycl::queue* handle,
+int onednn_batchgemm(sycl::queue handle,
                      int m,
                      int n,
                      int k,

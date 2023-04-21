@@ -393,14 +393,14 @@ void launch_bias_gelu(const T* input,
                       T* output,
                       int intermediate_size,
                       int batch_size,
-                      queue* stream)
+                      queue stream)
 {
     int iterations = (intermediate_size + 1023) / 1024;
     int threads = (intermediate_size - 1) / (iterations * 4) + 1;
     range<3> block_dims(1, 1, threads);
     range<3> grid_dims(1, 1, batch_size);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dims * block_dims, block_dims), [=](nd_item<3> item_ct1) {
             fused_bias_gelu(input, bias, output, intermediate_size / 4, iterations, item_ct1);
         });
@@ -408,26 +408,26 @@ void launch_bias_gelu(const T* input,
 }
 
 template <typename T>
-void launch_gelu(const T* input, T* output, int intermediate_size, int batch_size, queue* stream)
+void launch_gelu(const T* input, T* output, int intermediate_size, int batch_size, queue stream)
 {
     int iterations = (intermediate_size + 1023) / 1024;
     int threads = (intermediate_size - 1) / (iterations * 4) + 1;
     range<3> block_dims(1, 1, threads);
     range<3> grid_dims(1, 1, batch_size);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dims * block_dims, block_dims), [=](nd_item<3> item_ct1) {
             gelu_kernel(input, output, intermediate_size / 4, iterations, item_ct1);
         });
     });
 }
 
-template void launch_bias_gelu<float>(const float*, const float*, float*, int, int, queue*);
-template void launch_bias_gelu<half>(const half*, const half*, half*, int, int, queue*);
-template void launch_bias_gelu<bf16>(const bf16*, const bf16*, bf16*, int, int, queue*);
+template void launch_bias_gelu<float>(const float*, const float*, float*, int, int, queue);
+template void launch_bias_gelu<half>(const half*, const half*, half*, int, int, queue);
+template void launch_bias_gelu<bf16>(const bf16*, const bf16*, bf16*, int, int, queue);
 
-template void launch_gelu<float>(const float*, float*, int, int, queue*);
-template void launch_gelu<half>(const half*, half*, int, int, queue*);
+template void launch_gelu<float>(const float*, float*, int, int, queue);
+template void launch_gelu<half>(const half*, half*, int, int, queue);
 
 template <typename T>
 void launch_d_gelu(T* d_output,
@@ -435,20 +435,20 @@ void launch_d_gelu(T* d_output,
                    const T* bias,
                    int intermediate_size,
                    int batch_size,
-                   queue* stream)
+                   queue stream)
 {
     int iterations = (intermediate_size + 1023) / 1024;
     int threads = (intermediate_size - 1) / (iterations * 4) + 1;
     range<3> block_dims(1, 1, threads);
     range<3> grid_dims(1, 1, batch_size);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dims * block_dims, block_dims), [=](nd_item<3> item_ct1) {
             d_gelu_func(d_output, input, bias, intermediate_size / 4, iterations, item_ct1);
         });
     });
 }
 
-template void launch_d_gelu<float>(float*, const float*, const float*, int, int, queue*);
-template void launch_d_gelu<half>(half*, const half*, const half*, int, int, queue*);
-template void launch_d_gelu<bf16>(bf16*, const bf16*, const bf16*, int, int, queue*);
+template void launch_d_gelu<float>(float*, const float*, const float*, int, int, queue);
+template void launch_d_gelu<half>(half*, const half*, const half*, int, int, queue);
+template void launch_d_gelu<bf16>(bf16*, const bf16*, const bf16*, int, int, queue);

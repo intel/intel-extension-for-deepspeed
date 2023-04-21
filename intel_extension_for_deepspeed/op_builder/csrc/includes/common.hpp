@@ -8,13 +8,13 @@
     CHECK_CONTIGUOUS(x)
 
 template <typename T>
-inline void print_nan(sycl::queue* stream, int bsz, const T* buf, char* name)
+inline void print_nan(sycl::queue stream, int bsz, const T* buf, char* name)
 {
     T temp_tensor[10000];
     bool has_nan = false;
-    stream->wait();
-    stream->memcpy(temp_tensor, buf, bsz * sizeof(T));
-    stream->wait();
+    stream.wait();
+    stream.memcpy(temp_tensor, buf, bsz * sizeof(T));
+    stream.wait();
     for (int i = 0; i < bsz; i++) {
         if (isnan(float(temp_tensor[i]))) { has_nan = true; }
     }

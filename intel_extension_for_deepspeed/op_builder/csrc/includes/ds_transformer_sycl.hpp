@@ -160,8 +160,8 @@ private:
 
     bool _pre_or_postLayerNorm;
 
-    sycl::queue* _onemklQ;
-    sycl::queue* _stream;
+    sycl::queue _onemklQ;
+    sycl::queue _stream;
 
     // layers
     FeedForward<T> _qkv_linear;
