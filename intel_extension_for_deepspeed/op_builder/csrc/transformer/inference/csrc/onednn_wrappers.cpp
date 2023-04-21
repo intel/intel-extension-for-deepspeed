@@ -91,7 +91,7 @@ inline int onednn_matmul(sycl::queue handle,
     matmul_args.insert({DNNL_ARG_DST, dst_mem});
 
     matmul_prim.execute(stream, matmul_args);
-    stream.wait();
+    /* stream.wait(); */
 }
 
 int onednn_matmul_ex(sycl::queue handle,

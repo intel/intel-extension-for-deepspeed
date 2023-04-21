@@ -44,6 +44,29 @@ inline auto get_attn_mask_stride(at::Tensor& attn_mask) -> int
 }
 
 template <typename T>
+void allocate_workspace(unsigned hidden_dim,
+                        unsigned num_heads,
+                        unsigned prompt_length,
+                        unsigned batch_size,
+                        unsigned num_layers,
+                        unsigned mp_size = 1,
+                        bool external_cache = false,
+                        unsigned rank = 0,
+                        unsigned max_out_tokens = 1024)
+{
+    SyclContext::Instance().GenWorkSpace(num_layers,
+                                         num_heads,
+                                         batch_size,
+                                         prompt_length,
+                                         hidden_dim,
+                                         mp_size,
+                                         external_cache,
+                                         sizeof(T),
+                                         rank,
+                                         max_out_tokens);
+}
+
+template <typename T>
 at::Tensor ds_softmax(at::Tensor& attn_scores,
                       at::Tensor& attn_mask,
                       at::Tensor& alibi,
@@ -173,13 +196,13 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
     onednn_matmul_ex(SyclContext::Instance().GetCurrentStream(),
                      false,
                      false,
-                     weight.size(1),
                      bsz,
+                     weight.size(1),
                      input.size(2),
                      alpha,
                      gemm_beta,
-                     (T*)weight.data_ptr(),
                      workspace,
+                     (T*)weight.data_ptr(),
                      (T*)output.data_ptr());
     
     if (add_bias)
@@ -188,7 +211,14 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
                         q_int8 ? weight.size(0) : weight.size(1),
                         bsz,
                         SyclContext::Instance().GetCurrentStream());
-    return torch::from_blob(workspace, input.sizes(), input.options());
+
+    auto output_stride = c10::TensorType::contiguousStridesOf(input.sizes());
+    return at::from_blob(workspace, 
+                            input.sizes(), 
+                            output_stride,
+                            nullptr,
+                            input.options(),
+                            input.device());
 }
 
 template <typename T>
@@ -216,7 +246,13 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                        .device(torch::kXPU)
                        .requires_grad(false);
 
-    auto output = at::from_blob(workspace, {input.size(0), input.size(1), out_size}, options);
+    auto output_stride = c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size});
+    auto output = at::from_blob(workspace, 
+                                {input.size(0), input.size(1), out_size}, 
+                                output_stride, 
+                                nullptr, 
+                                options,
+                                input.device());
     auto inp_norm = qkv_unfused_sycl<T>(
         output, input, weight, q_scale, bias, gamma, beta, epsilon, add_bias, q_int8);
 
@@ -239,4 +275,13 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &residual_add_bias<half>,
           "DeepSpeed residual add with fp16 (SYCL)");
     m.def("qkv_gemm_bf16", &ds_qkv_gemm<bf16>, "DeepSpeed qkv gemm with bf16 (SYCL)");
+    m.def("allocate_workspace_fp32",
+          &allocate_workspace<float>,
+          "DeepSpeed memory allocation for GPT inference with fp32 (SYCL)");
+    m.def("allocate_workspace_bf16",
+          &allocate_workspace<bf16>,
+          "DeepSpeed memory allocation for GPT inference with bf16 (SYCL)");
+    m.def("allocate_workspace_fp16",
+          &allocate_workspace<sycl::half>,
+          "DeepSpeed memory allocation for GPT inference with fp16 (SYCL)");
 }
