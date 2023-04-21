@@ -98,12 +98,12 @@ void column_sum_reduce(const bf16* inp,
 }
 
 template <typename T>
-void launch_fuse_transpose_bias_kernel(const T* inp, T* out, int rows, int cols, queue* stream)
+void launch_fuse_transpose_bias_kernel(const T* inp, T* out, int rows, int cols, queue stream)
 {
     range<3> grid_dim(1, 1, (cols - 1) / MAX_SG_NUM + 1);
     range<3> block_dim(1, MAX_SG_NUM, MAX_SG_NUM);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> tile(
             range<2>(MAX_SG_NUM, MAX_SG_NUM1), cgh);
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -118,17 +118,17 @@ template void launch_fuse_transpose_bias_kernel<float>(const float* inp,
                                                        float* out,
                                                        int rows,
                                                        int cols,
-                                                       queue* stream);
+                                                       queue stream);
 template void launch_fuse_transpose_bias_kernel<bf16>(const bf16* inp,
                                                       bf16* out,
                                                       int rows,
                                                       int cols,
-                                                      queue* stream);
+                                                      queue stream);
 template void launch_fuse_transpose_bias_kernel<half>(const half* inp,
                                                       half* out,
                                                       int rows,
                                                       int cols,
-                                                      queue* stream);
+                                                      queue stream);
 
 void fused_add2_kernel(const int N,
                        float* out,
@@ -238,13 +238,13 @@ void launch_fused_add2(T* out,
                        int batch_size,
                        int seq_length,
                        int hidden_dim,
-                       queue* stream)
+                       queue stream)
 {
     int total_count = batch_size * seq_length * hidden_dim / 4;
     range<3> grid_dim = range<3>(1, 1, DS_GET_BLOCKS(total_count));  //(batch_size * seq_length);
 
     range<3> block_dim = range<3>(1, 1, DS_CUDA_NUM_THREADS);  //(hidden_dim / 4);
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             fused_add2_kernel(total_count, out, inp1, inp2, item_ct1);
         });
@@ -257,21 +257,21 @@ template void launch_fused_add2<float>(float* out,
                                        int batch_size,
                                        int seq_length,
                                        int hidden_dim,
-                                       queue* stream);
+                                       queue stream);
 template void launch_fused_add2<bf16>(bf16* out,
                                       const bf16* inp1,
                                       const bf16* inp2,
                                       int batch_size,
                                       int seq_length,
                                       int hidden_dim,
-                                      queue* stream);
+                                      queue stream);
 template void launch_fused_add2<half>(half* out,
                                       const half* inp1,
                                       const half* inp2,
                                       int batch_size,
                                       int seq_length,
                                       int hidden_dim,
-                                      queue* stream);
+                                      queue stream);
 
 void fused_add3_kernel(float* out,
                        const float* inp1,
@@ -357,12 +357,12 @@ void launch_fused_add3<float>(float* out,
                               int batch_size,
                               int seq_length,
                               int hidden_size,
-                              queue* stream)
+                              queue stream)
 {
     range<3> grid_dim(1, 1, batch_size * seq_length);
     range<3> block_dim(1, 1, hidden_size / 4);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             fused_add3_kernel(out,
                               inp1,
@@ -383,13 +383,13 @@ void launch_fused_add3<half>(half* out,
                              int batch_size,
                              int seq_length,
                              int hidden_size,
-                             queue* stream)
+                             queue stream)
 {
     range<3> grid_dim(1, 1, batch_size * seq_length);
 
     range<3> block_dim(1, 1, hidden_size / 4);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             fused_add3_kernel(out,
                               inp1,
@@ -496,13 +496,13 @@ void launch_fused_add4<float>(float* out,
                               int batch_size,
                               int seq_length,
                               int hidden_size,
-                              queue* stream)
+                              queue stream)
 {
     range<3> grid_dim(1, 1, batch_size * seq_length);
 
     range<3> block_dim(1, 1, hidden_size / 4);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             fused_add4_kernel(out,
                               inp1,
@@ -525,13 +525,13 @@ void launch_fused_add4<half>(half* out,
                              int batch_size,
                              int seq_length,
                              int hidden_size,
-                             queue* stream)
+                             queue stream)
 {
     range<3> grid_dim(1, 1, batch_size * seq_length);
 
     range<3> block_dim(1, 1, hidden_size / 4);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             fused_add4_kernel(out,
                               inp1,

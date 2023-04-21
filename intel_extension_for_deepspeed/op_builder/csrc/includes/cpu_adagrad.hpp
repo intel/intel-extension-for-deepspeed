@@ -38,14 +38,14 @@ public:
     {
         _streams[0] = ::SyclContext::Instance().GetCurrentStream();
         _streams[1] = ::SyclContext::Instance().GetNewStream();
-        sycl::queue& q_ct1 = *_streams[0];
+        sycl::queue& q_ct1 = _streams[0];
 
         *_doubled_buffer = sycl::malloc_host<float>(TILE, q_ct1);
         *(_doubled_buffer + 1) = sycl::malloc_host<float>(TILE, q_ct1);
     }
     ~Adagrad_Optimizer()
     {
-            sycl::queue& q_ct1 = *_streams[0];
+            sycl::queue& q_ct1 = _streams[0];
             sycl::free(_doubled_buffer[0], q_ct1);
             sycl::free(_doubled_buffer[1], q_ct1);
     }
@@ -55,7 +55,7 @@ public:
     STEP(8)
     inline void SynchronizeStreams()
     {
-        for (int i = 0; i < 2; i++) _streams[i]->wait();
+        for (int i = 0; i < 2; i++) _streams[i].wait();
     }
     inline void IncrementStep(size_t step)
     {
@@ -80,5 +80,5 @@ private:
     float* _doubled_buffer[2];
     bool _buf_index;
 
-    sycl::queue* _streams[2];
+    sycl::queue _streams[2];
 };

@@ -95,7 +95,7 @@ void multi_tensor_apply(int block_size,
 
     TensorListMetadata<depth> tl;
 
-    sycl::queue* stream = SyclContext::Instance().GetCurrentStream();
+    sycl::queue stream = SyclContext::Instance().GetCurrentStream();
 
     tl.start_tensor_this_launch = 0;
     int loc_block_info = 0;
@@ -125,7 +125,7 @@ void multi_tensor_apply(int block_size,
                 sycl::buffer<void*, 2> addresses_buf(&(tl.addresses[0][0]), {4, 36});
                 sycl::buffer<int, 1> sizes_buf(&(tl.sizes[0]), {36});
                 sycl::buffer<int, 1> data_buf(data_ptr, noop_flag.numel());
-                stream->submit([&](sycl::handler& cgh) {
+                stream.submit([&](sycl::handler& cgh) {
                     sycl::accessor tl_block_to_tensor(block_to_tensor_buf, cgh, sycl::read_only);
                     sycl::accessor tl_block_to_chunk(block_to_chunk_buf, cgh, sycl::read_only);
                     sycl::accessor tl_addresses(addresses_buf, cgh, sycl::read_only);

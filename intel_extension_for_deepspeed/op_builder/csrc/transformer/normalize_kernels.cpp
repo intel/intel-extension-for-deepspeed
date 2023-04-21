@@ -442,7 +442,7 @@ void launch_bias_residual_layer_norm(T* vals,
                                      float epsilon,
                                      int batch_size,
                                      int hidden_dim,
-                                     sycl::queue* stream,
+                                     sycl::queue stream,
                                      bool preLayerNorm,
                                      bool training,
                                      T* vars,
@@ -461,7 +461,7 @@ void launch_bias_residual_layer_norm(T* vals,
 
     sycl::range<3> block_dim(1, 1, threads);
 
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         sycl::accessor<float, 1, sycl::access_mode::read_write, sycl::access::target::local>
             shr_acc_ct1(sycl::range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
         cgh.parallel_for(sycl::nd_range<3>(grid_dim * block_dim, block_dim),
@@ -489,7 +489,7 @@ template void launch_bias_residual_layer_norm<float>(float* vals,
                                                      float epsilon,
                                                      int batch_size,
                                                      int hidden_dim,
-                                                     sycl::queue* stream,
+                                                     sycl::queue stream,
                                                      bool preLayerNorm,
                                                      bool training,
                                                      float* vars,
@@ -501,7 +501,7 @@ template void launch_bias_residual_layer_norm<bf16>(bf16* vals,
                                                     float epsilon,
                                                     int batch_size,
                                                     int hidden_dim,
-                                                    sycl::queue* stream,
+                                                    sycl::queue stream,
                                                     bool preLayerNorm,
                                                     bool training,
                                                     bf16* vars,
@@ -514,7 +514,7 @@ void launch_bias_residual_layer_norm<half>(half* vals,
                                            float epsilon,
                                            int batch_size,
                                            int hidden_dim,
-                                           queue* stream,
+                                           queue stream,
                                            bool preLayerNorm,
                                            bool training,
                                            half* vars,
@@ -535,7 +535,7 @@ void launch_bias_residual_layer_norm<half>(half* vals,
 
     range<3> block_dim(1, 1, threads);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         sycl::accessor<float, 1, sycl::access_mode::read_write, sycl::access::target::local>
             shr_acc_ct1(sycl::range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -579,7 +579,7 @@ void launch_bias_residual_layer_norm(T* vals,
                                      float epsilon,
                                      int batch_size,
                                      int hidden_dim,
-                                     queue* stream,
+                                     queue stream,
                                      bool preLayerNorm,
                                      bool training,
                                      T* vars)
@@ -600,7 +600,7 @@ void launch_bias_residual_layer_norm(T* vals,
 
     range<3> block_dim(1, 1, threads);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> shr_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 
@@ -629,7 +629,7 @@ template void launch_bias_residual_layer_norm<float>(float* vals,
                                                      float epsilon,
                                                      int batch_size,
                                                      int hidden_dim,
-                                                     queue* stream,
+                                                     queue stream,
                                                      bool preLayerNorm,
                                                      bool training,
                                                      float* vars);
@@ -640,7 +640,7 @@ template void launch_bias_residual_layer_norm<bf16>(bf16* vals,
                                                     float epsilon,
                                                     int batch_size,
                                                     int hidden_dim,
-                                                    queue* stream,
+                                                    queue stream,
                                                     bool preLayerNorm,
                                                     bool training,
                                                     bf16* vars);
@@ -652,7 +652,7 @@ void launch_bias_residual_layer_norm<half>(half* vals,
                                            float epsilon,
                                            int batch_size,
                                            int hidden_dim,
-                                           queue* stream,
+                                           queue stream,
                                            bool preLayerNorm,
                                            bool training,
                                            half* vars)
@@ -675,7 +675,7 @@ void launch_bias_residual_layer_norm<half>(half* vals,
 
     range<3> block_dim(1, 1, threads);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         sycl::accessor<float, 1, sycl::access_mode::read_write, sycl::access::target::local>
             shr_acc_ct1(sycl::range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -1443,7 +1443,7 @@ void launch_layerNorm_backward(const T* out_grad,
                                T* inp_grad,
                                int batch,
                                int hidden_dim,
-                               queue* stream[2],
+                               queue stream[2],
                                bool invertible,
                                const T* betta)
 {
@@ -1452,7 +1452,7 @@ void launch_layerNorm_backward(const T* out_grad,
     range<3> grid_dim(1, 1, hidden_dim / TILE_DIM);
     range<3> block_dim(1, TILE_DIM, TILE_DIM);
 
-    stream[0]->submit([&](handler& cgh) {
+    stream[0].submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> betta_buffer(
             range<2>(MAX_SG_NUM /*MAX_WARP_NUM*/, MAX_SG_NUM1), cgh);
         accessor<float, 2, access_mode::read_write, access::target::local> gamma_buffer(
@@ -1488,7 +1488,7 @@ void launch_layerNorm_backward(const T* out_grad,
 
     range<3> block_dim2(1, 1, threads);
 
-    stream[1]->submit([&](handler& cgh) {
+    stream[1].submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> partialSum_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 
@@ -1518,7 +1518,7 @@ template void launch_layerNorm_backward<float>(const float* out_grad,
                                                float* inp_grad,
                                                int batch,
                                                int hidden_dim,
-                                               queue* stream[2],
+                                               queue stream[2],
                                                bool invertible,
                                                const float* betta);
 
@@ -1531,7 +1531,7 @@ template void launch_layerNorm_backward<bf16>(const bf16* out_grad,
                                               bf16* inp_grad,
                                               int batch,
                                               int hidden_dim,
-                                              queue* stream[2],
+                                              queue stream[2],
                                               bool invertible,
                                               const bf16* betta);
 
@@ -1545,7 +1545,7 @@ void launch_layerNorm_backward<half>(const half* out_grad,
                                      half* inp_grad,
                                      int batch,
                                      int hidden_dim,
-                                     queue* stream[2],
+                                     queue stream[2],
                                      bool invertible,
                                      const half* betta)
 {
@@ -1557,7 +1557,7 @@ void launch_layerNorm_backward<half>(const half* out_grad,
     // LayerNormBackward1<half><<<grid_dim, block_dim, 0, stream[0]>>>(
     //     out_grad, vals_hat, gamma, betta, gamma_grad, betta_grad, batch,
     //     hidden_dim, invertible);
-    stream[0]->submit([&](handler& cgh) {
+    stream[0].submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> betta_buffer(
             range<2>(MAX_SG_NUM /*MAX_WARP_NUM*/, MAX_SG_NUM1), cgh);
         accessor<float, 2, access_mode::read_write, access::target::local> gamma_buffer(
@@ -1592,7 +1592,7 @@ void launch_layerNorm_backward<half>(const half* out_grad,
 
     range<3> block_dim2(1, 1, threads / 2);
 
-    stream[1]->submit([&](handler& cgh) {
+    stream[1].submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> partialSum_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 
@@ -2021,7 +2021,7 @@ void launch_layerNorm_backward(const T* out_grad,
                                T* inp_grad,
                                int batch,
                                int hidden_dim,
-                               queue* stream[2])
+                               queue stream[2])
 {
     int threads = THREADS;
 
@@ -2031,7 +2031,7 @@ void launch_layerNorm_backward(const T* out_grad,
     // LayerNormBackward1<float><<<grid_dim, block_dim, 0, stream[0]>>>(
     //     out_grad, X_data, vars, means, gamma_grad, betta_grad, batch,
     //     hidden_dim);
-    stream[0]->submit([&](handler& cgh) {
+    stream[0].submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> betta_buffer(
             range<2>(MAX_SG_NUM /*MAX_WARP_NUM*/, MAX_SG_NUM1), cgh);
         accessor<float, 2, access_mode::read_write, access::target::local> gamma_buffer(
@@ -2063,7 +2063,7 @@ void launch_layerNorm_backward(const T* out_grad,
         throw std::runtime_error("Unsupport hidden_dim.");
 
     range<3> block_dim2(1, 1, threads);
-    stream[1]->submit([&](handler& cgh) {
+    stream[1].submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> partialSum_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 
@@ -2093,7 +2093,7 @@ template void launch_layerNorm_backward<float>(const float* out_grad,
                                                float* inp_grad,
                                                int batch,
                                                int hidden_dim,
-                                               queue* stream[2]);
+                                               queue stream[2]);
 template void launch_layerNorm_backward<bf16>(const bf16* out_grad,
                                               const bf16* X_data,
                                               const bf16* vars,
@@ -2104,7 +2104,7 @@ template void launch_layerNorm_backward<bf16>(const bf16* out_grad,
                                               bf16* inp_grad,
                                               int batch,
                                               int hidden_dim,
-                                              queue* stream[2]);
+                                              queue stream[2]);
 template <>
 void launch_layerNorm_backward<half>(const half* out_grad,
                                      const half* X_data,
@@ -2116,7 +2116,7 @@ void launch_layerNorm_backward<half>(const half* out_grad,
                                      half* inp_grad,
                                      int batch,
                                      int hidden_dim,
-                                     queue* stream[2])
+                                     queue stream[2])
 {
     int threads = THREADS;
 
@@ -2126,7 +2126,7 @@ void launch_layerNorm_backward<half>(const half* out_grad,
     // LayerNormBackward1<half><<<grid_dim, block_dim, 0, stream[0]>>>(
     //     out_grad, X_data, vars, means, gamma_grad, betta_grad, batch,
     //     hidden_dim);
-    stream[0]->submit([&](handler& cgh) {
+    stream[0].submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> betta_buffer(
             range<2>(MAX_SG_NUM /*MAX_WARP_NUM*/, MAX_SG_NUM1), cgh);
         accessor<float, 2, access_mode::read_write, access::target::local> gamma_buffer(
@@ -2160,7 +2160,7 @@ void launch_layerNorm_backward<half>(const half* out_grad,
         throw std::runtime_error("Unsupport hidden_dim.");
 
     range<3> block_dim2(1, 1, threads / 2);
-    stream[1]->submit([&](handler& cgh) {
+    stream[1].submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> partialSum_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 
@@ -2191,7 +2191,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          T* inp_grad,
                                          int batch,
                                          int hidden_dim,
-                                         queue* stream[2],
+                                         queue stream[2],
                                          bool invertible,
                                          const T* betta)
 {
@@ -2202,7 +2202,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
     // LayerNormBackward1<float><<<grid_dim, block_dim, 0, stream[0]>>>(
     //     out_grad1, vals_hat, gamma, betta, gamma_grad, betta_grad, batch,
     //     hidden_dim, invertible);
-    stream[0]->submit([&](handler& cgh) {
+    stream[0].submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> betta_buffer(
             range<2>(MAX_SG_NUM /*MAX_WARP_NUM*/, MAX_SG_NUM1), cgh);
         accessor<float, 2, access_mode::read_write, access::target::local> gamma_buffer(
@@ -2235,7 +2235,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
 
     range<3> block_dim2(1, 1, threads);
 
-    stream[1]->submit([&](handler& cgh) {
+    stream[1].submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> partialSum_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 
@@ -2266,7 +2266,7 @@ template void launch_layerNorm_backward_fused_add<float>(const float* out_grad1,
                                                          float* inp_grad,
                                                          int batch,
                                                          int hidden_dim,
-                                                         queue* stream[2],
+                                                         queue stream[2],
                                                          bool invertible,
                                                          const float* betta);
 
@@ -2280,7 +2280,7 @@ template void launch_layerNorm_backward_fused_add<bf16>(const bf16* out_grad1,
                                                         bf16* inp_grad,
                                                         int batch,
                                                         int hidden_dim,
-                                                        queue* stream[2],
+                                                        queue stream[2],
                                                         bool invertible,
                                                         const bf16* betta);
 
@@ -2295,7 +2295,7 @@ void launch_layerNorm_backward_fused_add<half>(const half* out_grad1,
                                                half* inp_grad,
                                                int batch,
                                                int hidden_dim,
-                                               queue* stream[2],
+                                               queue stream[2],
                                                bool invertible,
                                                const half* betta)
 {
@@ -2307,7 +2307,7 @@ void launch_layerNorm_backward_fused_add<half>(const half* out_grad1,
     // LayerNormBackward1<half><<<grid_dim, block_dim, 0, stream[0]>>>(
     //     out_grad1, vals_hat, gamma, betta, gamma_grad, betta_grad, batch,
     //     hidden_dim, invertible);
-    stream[0]->submit([&](handler& cgh) {
+    stream[0].submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> betta_buffer(
             range<2>(MAX_SG_NUM /*MAX_WARP_NUM*/, MAX_SG_NUM1), cgh);
         accessor<float, 2, access_mode::read_write, access::target::local> gamma_buffer(
@@ -2341,7 +2341,7 @@ void launch_layerNorm_backward_fused_add<half>(const half* out_grad1,
         throw std::runtime_error("Unsupport hidden_dim.");
 
     range<3> block_dim2(1, 1, threads / 2);
-    stream[1]->submit([&](handler& cgh) {
+    stream[1].submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> partialSum_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 
@@ -2374,7 +2374,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          T* inp_grad,
                                          int batch,
                                          int hidden_dim,
-                                         queue* stream[2])
+                                         queue stream[2])
 {
     int threads = THREADS;
 
@@ -2384,7 +2384,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
     // LayerNormBackward1<float><<<grid_dim, block_dim, 0, stream[0]>>>(
     //     out_grad1, X_data, vars, means, gamma_grad, betta_grad, batch,
     //     hidden_dim);
-    stream[0]->submit([&](handler& cgh) {
+    stream[0].submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> betta_buffer(
             range<2>(MAX_SG_NUM /*MAX_WARP_NUM*/, MAX_SG_NUM1), cgh);
         accessor<float, 2, access_mode::read_write, access::target::local> gamma_buffer(
@@ -2416,7 +2416,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
         throw std::runtime_error("Unsupport hidden_dim.");
 
     range<3> block_dim2(1, 1, threads);
-    stream[1]->submit([&](handler& cgh) {
+    stream[1].submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> partialSum_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 
@@ -2447,7 +2447,7 @@ template void launch_layerNorm_backward_fused_add<float>(const float* out_grad1,
                                                          float* inp_grad,
                                                          int batch,
                                                          int hidden_dim,
-                                                         queue* stream[2]);
+                                                         queue stream[2]);
 template void launch_layerNorm_backward_fused_add<bf16>(const bf16* out_grad1,
                                                         const bf16* out_grad2,
                                                         const bf16* X_data,
@@ -2459,7 +2459,7 @@ template void launch_layerNorm_backward_fused_add<bf16>(const bf16* out_grad1,
                                                         bf16* inp_grad,
                                                         int batch,
                                                         int hidden_dim,
-                                                        queue* stream[2]);
+                                                        queue stream[2]);
 template <>
 void launch_layerNorm_backward_fused_add<half>(const half* out_grad1,
                                                const half* out_grad2,
@@ -2472,7 +2472,7 @@ void launch_layerNorm_backward_fused_add<half>(const half* out_grad1,
                                                half* inp_grad,
                                                int batch,
                                                int hidden_dim,
-                                               queue* stream[2])
+                                               queue stream[2])
 {
     int threads = THREADS;
 
@@ -2482,7 +2482,7 @@ void launch_layerNorm_backward_fused_add<half>(const half* out_grad1,
     // LayerNormBackward1<half><<<grid_dim, block_dim, 0, stream[0]>>>(
     //     out_grad1, X_data, vars, means, gamma_grad, betta_grad, batch,
     //     hidden_dim);
-    stream[0]->submit([&](handler& cgh) {
+    stream[0].submit([&](handler& cgh) {
         accessor<float, 2, access_mode::read_write, access::target::local> betta_buffer(
             range<2>(MAX_SG_NUM /*MAX_WARP_NUM*/, MAX_SG_NUM1), cgh);
         accessor<float, 2, access_mode::read_write, access::target::local> gamma_buffer(
@@ -2515,7 +2515,7 @@ void launch_layerNorm_backward_fused_add<half>(const half* out_grad1,
         throw std::runtime_error("Unsupport hidden_dim.");
 
     range<3> block_dim2(1, 1, threads / 2);
-    stream[1]->submit([&](handler& cgh) {
+    stream[1].submit([&](handler& cgh) {
         accessor<float, 1, access_mode::read_write, access::target::local> partialSum_acc_ct1(
             range<1>(MAX_SG_NUM /*MAX_WARP_NUM*/), cgh);
 

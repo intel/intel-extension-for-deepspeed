@@ -37,12 +37,12 @@ public:
 
     ~Softmax() {}
 
-    void Forward(int bsz, T* vals, const T* attn_mask, sycl::queue* stream)
+    void Forward(int bsz, T* vals, const T* attn_mask, sycl::queue stream)
     {
         launch_attn_softmax<T>(vals, attn_mask, bsz, config_.heads, config_.seq_length, stream);
     }
 
-    void Backward(int bsz, T* out_grad, const T* soft_out, sycl::queue* stream)
+    void Backward(int bsz, T* out_grad, const T* soft_out, sycl::queue stream)
     {
         launch_attn_softmax_backward_v2<T>(
             out_grad, soft_out, bsz, config_.heads, config_.seq_length, stream);

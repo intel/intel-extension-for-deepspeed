@@ -24,7 +24,7 @@ public:
              int k,
              oneapi::mkl::transpose ta,
              oneapi::mkl::transpose tb,
-             sycl::queue* h)
+             sycl::queue h)
         : M(m), N(n), K(k), transa(ta), transb(tb), handle(h)
     {
         dpct::device_ext& dev_ct1 = dpct::get_current_device();
@@ -134,7 +134,7 @@ public:
 
 private:
     int M, N, K;
-    sycl::queue* handle;
+    sycl::queue handle;
     oneapi::mkl::transpose transa, transb;
     T *A, *B, *C;
 };
@@ -148,7 +148,7 @@ public:
                     int k,
                     oneapi::mkl::transpose ta,
                     oneapi::mkl::transpose tb,
-                    sycl::queue* h)
+                    sycl::queue h)
         : bsz(b), M(m), N(n), K(k), transa(ta), transb(tb), handle(h)
     {
         dpct::device_ext& dev_ct1 = dpct::get_current_device();
@@ -297,7 +297,7 @@ public:
 
 private:
     int bsz, M, N, K;
-    sycl::queue* handle;
+    sycl::queue handle;
     oneapi::mkl::transpose transa, transb;
     T *A, *B, *C;
 };

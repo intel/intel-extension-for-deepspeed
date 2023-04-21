@@ -37,25 +37,25 @@ void launch_qunatize_kernel(T* vals,
                             int total_count,
                             int group_num,
                             int num_bits,
-                            sycl::queue* stream);
+                            sycl::queue stream);
 template <typename T>
 void launch_sr_qunatize_kernel(T* vals,
                                int total_count,
                                int group_num,
                                int num_bits,
-                               sycl::queue* stream);
+                               sycl::queue stream);
 template <typename T>
 void launch_qunatize_kernel_asym(T* vals,
                                  int total_count,
                                  int group_num,
                                  int num_bits,
-                                 sycl::queue* stream);
+                                 sycl::queue stream);
 template <typename T>
 void launch_sr_qunatize_kernel_asym(T* vals,
                                     int total_count,
                                     int group_num,
                                     int num_bits,
-                                    sycl::queue* stream);
+                                    sycl::queue stream);
 // Fused bias add with gelu activation
 template <typename T>
 void launch_bias_gelu(const T* input,
@@ -63,14 +63,14 @@ void launch_bias_gelu(const T* input,
                       T* output,
                       int intermediate_size,
                       int batch_size,
-                      sycl::queue* stream);
+                      sycl::queue stream);
 
 template <typename T>
 void launch_gelu(const T* input,
                  T* output,
                  int intermediate_size,
                  int batch_size,
-                 sycl::queue* stream);
+                 sycl::queue stream);
 
 template <typename T>
 void launch_d_gelu(T* d_output,
@@ -78,7 +78,7 @@ void launch_d_gelu(T* d_output,
                    const T* bias,
                    int intermediate_size,
                    int batch_size,
-                   sycl::queue* stream);
+                   sycl::queue stream);
 
 // Custom fused bias add with layer normalization
 template <typename T>
@@ -89,7 +89,7 @@ void launch_bias_residual_layer_norm(T* vals,
                                      float epsilon,
                                      int batch_size,
                                      int hidden_dim,
-                                     sycl::queue* stream,
+                                     sycl::queue stream,
                                      bool preLayerNorm,
                                      bool training,
                                      T* vars,
@@ -103,7 +103,7 @@ void launch_bias_residual_layer_norm(T* vals,
                                      float epsilon,
                                      int batch_size,
                                      int hidden_dim,
-                                     sycl::queue* stream,
+                                     sycl::queue stream,
                                      bool preLayerNorm,
                                      bool training,
                                      T* vars);
@@ -120,7 +120,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          T* inp_grad,
                                          int batch_size,
                                          int hidden_dim,
-                                         sycl::queue* stream[2]);
+                                         sycl::queue stream[2]);
 template <typename T>
 void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          const T* out_grad2,
@@ -132,7 +132,7 @@ void launch_layerNorm_backward_fused_add(const T* out_grad1,
                                          T* inp_grad,
                                          int batch_size,
                                          int hidden_dim,
-                                         sycl::queue* stream[2],
+                                         sycl::queue stream[2],
                                          bool invertible = false,
                                          const T* betta = nullptr);
 
@@ -147,7 +147,7 @@ void launch_layerNorm_backward(const T* out_grad,
                                T* inp_grad,
                                int batch_size,
                                int hidden_dim,
-                               sycl::queue* stream[2]);
+                               sycl::queue stream[2]);
 
 template <typename T>
 void launch_layerNorm_backward(const T* out_grad,
@@ -159,7 +159,7 @@ void launch_layerNorm_backward(const T* out_grad,
                                T* inp_grad,
                                int batch_size,
                                int hidden_dim,
-                               sycl::queue* stream[2],
+                               sycl::queue stream[2],
                                bool invertible = false,
                                const T* betta = nullptr);
 
@@ -176,10 +176,10 @@ void launch_layerNorm_backward_nreversible(const T* out_grad,
                                            T* inp_grad,
                                            int batch_size,
                                            int hidden_dim,
-                                           sycl::queue* stream[2]);
+                                           sycl::queue stream[2]);
 
 template <typename T>
-void Transpose(const T* inp_mat, T* out_mat, int rows, int cols, sycl::queue* stream);
+void Transpose(const T* inp_mat, T* out_mat, int rows, int cols, sycl::queue stream);
 
 template <typename T>
 void launch_attn_softmax_backward(T* out_grad,
@@ -187,7 +187,7 @@ void launch_attn_softmax_backward(T* out_grad,
                                   int batch_size,
                                   int heads,
                                   int seq_length,
-                                  sycl::queue* stream);
+                                  sycl::queue stream);
 
 template <typename T>
 void launch_attn_softmax_backward_v2(T* out_grad,
@@ -195,7 +195,7 @@ void launch_attn_softmax_backward_v2(T* out_grad,
                                      int batch_size,
                                      int heads,
                                      int seq_length,
-                                     sycl::queue* stream);
+                                     sycl::queue stream);
 
 // Custom softmax with scaling and attention mask addition
 template <typename T>
@@ -204,7 +204,7 @@ void launch_attn_softmax(T* vals,
                          int batch_size,
                          int heads,
                          int sequence_length,
-                         sycl::queue* stream);
+                         sycl::queue stream);
 
 template <typename T>
 void launch_transform_0213(T* output,
@@ -213,7 +213,7 @@ void launch_transform_0213(T* output,
                            int seq_length,
                            int hidden_dim,
                            int heads,
-                           sycl::queue* stream);
+                           sycl::queue stream);
 
 // Custom bias add
 template <typename T>
@@ -224,7 +224,7 @@ void launch_bias_add_transform_0213(T* outputs,
                                     int seq_length,
                                     int hidden_dim,
                                     int heads,
-                                    sycl::queue* stream,
+                                    sycl::queue stream,
                                     int trans_count);
 
 // 4D transform [0, 1, 2, 3] -> [0, 2, 1, 3]
@@ -235,7 +235,7 @@ void launch_transform4d_0213(T* out,
                              int heads,
                              int seq_length,
                              int hidden_dim,
-                             sycl::queue* stream,
+                             sycl::queue stream,
                              int trans_count);
 
 template <typename T>
@@ -245,7 +245,7 @@ void launch_dropout(T* vals,
                     int batch,
                     int dim,
                     float ratio,
-                    sycl::queue* stream);
+                    sycl::queue stream);
 
 template <typename T>
 void launch_dropout(T* vals_out,
@@ -254,7 +254,7 @@ void launch_dropout(T* vals_out,
                     int total_count,
                     int dim,
                     float ratio,
-                    sycl::queue* stream,
+                    sycl::queue stream,
                     bool bwd = false);
 
 template <typename T>
@@ -266,10 +266,10 @@ void launch_dropout(T* out,
                     int batch,
                     int dim,
                     float ratio,
-                    sycl::queue* stream);
+                    sycl::queue stream);
 
 template <typename T>
-void launch_dropout_grad(T* vals, uint8_t* mask, int total_count, float ratio, sycl::queue* stream);
+void launch_dropout_grad(T* vals, uint8_t* mask, int total_count, float ratio, sycl::queue stream);
 
 template <typename T>
 void launch_dropout_grad(T* vals_out,
@@ -277,13 +277,13 @@ void launch_dropout_grad(T* vals_out,
                          uint8_t* mask,
                          int total_count,
                          float ratio,
-                         sycl::queue* stream);
+                         sycl::queue stream);
 
 template <typename T>
 void launch_fuse_transpose_bias_kernel(const T* inp,
                                        T* out,
                                        int rows,
                                        int cols,
-                                       sycl::queue* stream);
+                                       sycl::queue stream);
 
-void launch_param_update(const float* input, sycl::half* output, int size, sycl::queue* stream);
+void launch_param_update(const float* input, sycl::half* output, int size, sycl::queue stream);

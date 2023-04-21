@@ -28,7 +28,7 @@ std::vector<torch::Tensor> feedforward_forward(int bsz,
 
     T* output_ptr = (T*)output.data_ptr();
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     FeedForward<T> _ff =
         FeedForward<T>(typename FeedForward<T>::Config(batchSize, outputSize, inputSize));
@@ -70,7 +70,7 @@ std::vector<torch::Tensor> feedforward_backward(int bsz,
     T* grad_w_ptr = (T*)grad_weights.data_ptr();
     T* grad_b_ptr = (T*)grad_bias.data_ptr();
     T* grad_i_ptr = (T*)grad_input.data_ptr();
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     FeedForward<T> _ff =
         FeedForward<T>(typename FeedForward<T>::Config(batchSize, outputSize, inputSize));

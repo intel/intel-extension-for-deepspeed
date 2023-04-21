@@ -75,7 +75,7 @@ void Adam_Optimizer::Step(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
-        if ((t / TILE) >= 2) { _streams[_buf_index]->wait(); }
+        if ((t / TILE) >= 2) { _streams[_buf_index].wait(); }
 
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += SIMD_WIDTH) {
@@ -129,7 +129,7 @@ void Adam_Optimizer::Step(float* _params,
             size_t copy_size = TILE;
             if ((t + TILE) > _param_size) copy_size = _param_size - t;
             size_t offset = copy_size + t;
-            if ((t / TILE) >= 2) { _streams[_buf_index]->wait(); }
+            if ((t / TILE) >= 2) { _streams[_buf_index].wait(); }
 #pragma omp parallel for
             for (size_t k = t; k < offset; k++) {
                 float grad = half_precision ? (float)grads_cast_h[k] : grads[k];
@@ -213,7 +213,7 @@ void Adam_Optimizer::Step_4(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
-        if ((t / TILE) >= 2) { _streams[_buf_index]->wait(); }
+        if ((t / TILE) >= 2) { _streams[_buf_index].wait(); }
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += (SIMD_WIDTH << 2)) {
             AVX_Data grad_4[4];
@@ -420,7 +420,7 @@ void Adam_Optimizer::Step_8(float* _params,
         size_t copy_size = TILE;
         if ((t + TILE) > rounded_size) copy_size = rounded_size - t;
         size_t offset = copy_size + t;
-        if ((t / TILE) >= 2) { _streams[_buf_index]->wait(); }
+        if ((t / TILE) >= 2) { _streams[_buf_index].wait(); }
 #pragma omp parallel for
         for (size_t i = t; i < offset; i += (SIMD_WIDTH << 3)) {
             AVX_Data grad_4[8];

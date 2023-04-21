@@ -26,12 +26,12 @@ public:
                             const T* input_buf,
                             const T* bias,
                             T* output,
-                            sycl::queue* stream)
+                            sycl::queue stream)
     {
         launch_bias_gelu<T>(input_buf, bias, output, _config.intermediate_size, bsz, stream);
     }
 
-    void Backward(int bsz, T* d_output, const T* input_buf, const T* bias, sycl::queue* stream)
+    void Backward(int bsz, T* d_output, const T* input_buf, const T* bias, sycl::queue stream)
     {
         launch_d_gelu<T>(d_output, input_buf, bias, _config.intermediate_size, bsz, stream);
     }

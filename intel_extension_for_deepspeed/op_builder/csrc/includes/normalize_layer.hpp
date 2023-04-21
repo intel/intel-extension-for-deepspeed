@@ -47,7 +47,7 @@ public:
                            const T* residual,
                            const T* gamma,
                            const T* betta,
-                           sycl::queue* stream,
+                           sycl::queue stream,
                            bool preLayerNorm = false)
     {
         launch_bias_residual_layer_norm(vals,
@@ -69,7 +69,7 @@ public:
                  const T* residual,
                  const T* gamma,
                  const T* betta,
-                 sycl::queue* stream,
+                 sycl::queue stream,
                  bool preLayerNorm = false)
     {
         launch_bias_residual_layer_norm(vals,
@@ -90,7 +90,7 @@ public:
                   const T* gamma,
                   T* gamma_grad,
                   T* betta_grad,
-                  sycl::queue* stream[2],
+                  sycl::queue stream[2],
                   T* inp_grad_out,
                   const T* norm_in = nullptr)
     {
@@ -113,7 +113,7 @@ public:
                   const T* betta,
                   T* gamma_grad,
                   T* betta_grad,
-                  sycl::queue* stream[2],
+                  sycl::queue stream[2],
                   T* inp_grad_out,
                   const T* norm_out)
     {
@@ -137,7 +137,7 @@ public:
                           const T* gamma,
                           T* gamma_grad,
                           T* betta_grad,
-                          sycl::queue* stream[2],
+                          sycl::queue stream[2],
                           T* inp_grad_out,
                           const T* norm_in = nullptr)
     {
@@ -162,7 +162,7 @@ public:
                           const T* betta,
                           T* gamma_grad,
                           T* betta_grad,
-                          sycl::queue* stream[2],
+                          sycl::queue stream[2],
                           T* inp_grad_out,
                           const T* norm_out)
     {

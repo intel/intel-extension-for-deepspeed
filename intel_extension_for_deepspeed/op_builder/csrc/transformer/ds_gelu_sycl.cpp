@@ -14,7 +14,7 @@ std::vector<torch::Tensor> gelu_forward(int intermediate_size,
     const T* bias_ptr = (const T*)bias.data_ptr();
     auto output = torch::empty_like(input);
     T* output_ptr = (T*)output.data_ptr();
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
     Gelu<T> _gelu = Gelu<T>(typename Gelu<T>::Config(intermediate_size));
     _gelu.ForwardWithBiasAdd(bsz_seq, input_ptr, bias_ptr, output_ptr, q);
     return {output};
@@ -32,7 +32,7 @@ std::vector<torch::Tensor> gelu_backward(torch::Tensor& d_output,
     const T* input_ptr = (const T*)input.data_ptr();
     const T* bias_ptr = (const T*)bias.data_ptr();
     T* d_output_ptr = (T*)d_output.data_ptr();
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
     Gelu<T> _gelu = Gelu<T>(typename Gelu<T>::Config(intermediate_size));
     _gelu.Backward(bsz_seq, d_output_ptr, input_ptr, bias_ptr, q);
     return {d_output};

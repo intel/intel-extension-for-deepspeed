@@ -28,13 +28,13 @@ public:
 
     virtual ~Dropout() {}
 
-    void Forward(int bsz, T* out, const T* vals, sycl::queue* stream, bool bwd = false)
+    void Forward(int bsz, T* out, const T* vals, sycl::queue stream, bool bwd = false)
     {
         launch_dropout<T>(
             out, vals, _mask, bsz * _config.dim, _config.dim, _config.RATIO(), stream, bwd);
     }
 
-    void ForwardWithBias(int bsz, T* vals, const T* bias, sycl::queue* stream)
+    void ForwardWithBias(int bsz, T* vals, const T* bias, sycl::queue stream)
     {
         launch_dropout<T>(vals, bias, _mask, bsz, _config.dim, _config.RATIO(), stream);
     }
@@ -44,18 +44,18 @@ public:
                          const T* vals,
                          const T* residual,
                          const T* bias,
-                         sycl::queue* stream)
+                         sycl::queue stream)
     {
         launch_dropout<T>(
             out, vals, residual, bias, _mask, bsz, _config.dim, _config.RATIO(), stream);
     }
 
-    void Backward(int bsz, T* d_vals, sycl::queue* stream)
+    void Backward(int bsz, T* d_vals, sycl::queue stream)
     {
         launch_dropout_grad<T>(d_vals, _mask, bsz * _config.dim, _config.RATIO(), stream);
     }
 
-    void Backward(int bsz, T* d_vals_out, const T* d_vals, sycl::queue* stream)
+    void Backward(int bsz, T* d_vals_out, const T* d_vals, sycl::queue stream)
     {
         launch_dropout_grad<T>(
             d_vals_out, d_vals, _mask, bsz * _config.dim, _config.RATIO(), stream);
