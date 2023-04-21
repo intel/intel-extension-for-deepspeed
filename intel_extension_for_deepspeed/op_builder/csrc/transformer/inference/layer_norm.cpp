@@ -156,7 +156,7 @@ public:
   {                                                                            \
     fused_ln<T, unRollFactor, threadsPerGroup, maxThreads> fn(                 \
         output, vals, gamma, beta, epsilon, elems_per_row);                    \
-    stream.submit([&](sycl::handler &cmd_list) {                                \
+    stream->submit([&](sycl::handler &cmd_list) {                                \
       cmd_list.parallel_for(sycl::nd_range<2>{grid, block}, fn);               \
     });                                                                        \
   }
@@ -164,7 +164,7 @@ public:
 template <typename T>
 void launch_fused_ln(T *output, const T *vals, const T *gamma, const T *beta,
                      float epsilon, int rows, int elems_per_row,
-                     sycl::queue stream) {
+                     sycl::queue* stream) {
   // 8 for sycl::half, 4 for float
   constexpr int T_per_load = ln::granularity / sizeof(T);
 
@@ -231,11 +231,11 @@ void launch_fused_ln(T *output, const T *vals, const T *gamma, const T *beta,
 
 template void launch_fused_ln(sycl::half *, const sycl::half *,
                               const sycl::half *, const sycl::half *, float,
-                              int, int, sycl::queue);
+                              int, int, sycl::queue*);
 template void launch_fused_ln(bf16 *, const bf16 *, const bf16 *, const bf16 *,
-                              float, int, int, sycl::queue);
+                              float, int, int, sycl::queue*);
 template void launch_fused_ln(float *, const float *, const float *,
-                              const float *, float, int, int, sycl::queue);
+                              const float *, float, int, int, sycl::queue*);
 
 /*
 Fused resiual + bias + layer norm implementation. Assumes elems_per_row % 8
@@ -403,7 +403,7 @@ public:
 {                                                                                  \
   fused_residual_ln<T, unRollFactor, threadsPerGroup, maxThreads, false> fn(       \
     output, nullptr, vals, residual, bias, gamma, beta, epsilon, elems_per_row);   \
-  stream.submit([&](sycl::handler &cmd_list) {                                      \
+  stream->submit([&](sycl::handler &cmd_list) {                                      \
       cmd_list.parallel_for(sycl::nd_range<2>{grid, block}, fn); });               \
 }
 
@@ -411,7 +411,7 @@ template <typename T>
 void launch_fused_residual_ln(T *output, const T *vals, const T *residual,
                               const T *bias, const T *gamma, const T *beta,
                               float epsilon, int rows, int elems_per_row,
-                              sycl::queue stream) {
+                              sycl::queue* stream) {
   // 8 for sycl::half, 4 for float
   constexpr int T_per_load = ln::granularity / sizeof(T);
 
@@ -485,15 +485,15 @@ void launch_fused_residual_ln(T *output, const T *vals, const T *residual,
 template void launch_fused_residual_ln(sycl::half *, const sycl::half *,
                                        const sycl::half *, const sycl::half *,
                                        const sycl::half *, const sycl::half *,
-                                       float, int, int, sycl::queue);
+                                       float, int, int, sycl::queue*);
 
 template void launch_fused_residual_ln(bf16 *, const bf16 *, const bf16 *,
                                        const bf16 *, const bf16 *, const bf16 *,
-                                       float, int, int, sycl::queue);
+                                       float, int, int, sycl::queue*);
 
 template void launch_fused_residual_ln(float *, const float *, const float *,
                                        const float *, const float *,
                                        const float *, float, int, int,
-                                       sycl::queue);
+                                       sycl::queue*);
 
 

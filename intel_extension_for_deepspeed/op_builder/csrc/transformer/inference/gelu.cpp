@@ -68,7 +68,7 @@ public:
 
 template <typename T>
 void launch_bias_gelu(T *input, const T *bias, int intermediate_size,
-                      int batch_size, sycl::queue stream) {
+                      int batch_size, sycl::queue* stream) {
   constexpr int threads = 1024;
   constexpr int granularity = 16;
 
@@ -79,7 +79,7 @@ void launch_bias_gelu(T *input, const T *bias, int intermediate_size,
   sycl::range<1> grid_dims(((total_count + elems_per_block - 1) / elems_per_block) * threads);
 
   fused_bias_gelu<T> fn(input, bias, total_count, intermediate_size);
-  stream.submit([&](sycl::handler &cmd_list) {
+  stream->submit([&](sycl::handler &cmd_list) {
       cmd_list.parallel_for(sycl::nd_range<1>{grid_dims, block_dims}, fn);
       });
 
@@ -89,9 +89,9 @@ template class fused_bias_gelu<half>;
 template class fused_bias_gelu<bf16>;
 template class fused_bias_gelu<float>;
 
-template void launch_bias_gelu<float>(float *, const float *, int, int, sycl::queue);
-template void launch_bias_gelu<bf16>(bf16 *, const bf16 *, int, int, sycl::queue);
-template void launch_bias_gelu<half>(half *, const half *, int, int, sycl::queue);
+template void launch_bias_gelu<float>(float *, const float *, int, int, sycl::queue*);
+template void launch_bias_gelu<bf16>(bf16 *, const bf16 *, int, int, sycl::queue*);
+template void launch_bias_gelu<half>(half *, const half *, int, int, sycl::queue*);
 
 /*
 In-place channels-last bias add
@@ -142,7 +142,7 @@ public:
 
 template <typename T>
 void launch_bias_add(T *input, const T *bias, int intermediate_size,
-                     int batch_size, sycl::queue stream) {
+                     int batch_size, sycl::queue* stream) {
   constexpr int threads = 1024;
   constexpr int granularity = 16;
 
@@ -153,14 +153,14 @@ void launch_bias_add(T *input, const T *bias, int intermediate_size,
   sycl::range<1> grid_dims(((total_count + elems_per_block - 1) / elems_per_block) * threads);
 
   fused_bias_add<T> fn(input, bias, total_count, intermediate_size);
-  stream.submit([&](sycl::handler &cmd_list) {
+  stream->submit([&](sycl::handler &cmd_list) {
       cmd_list.parallel_for(sycl::nd_range<1>{grid_dims, block_dims}, fn);
       });
 }
 
-template void launch_bias_add<float>(float *, const float *, int, int, sycl::queue);
-template void launch_bias_add<bf16>(bf16 *, const bf16 *, int, int, sycl::queue);
-template void launch_bias_add<half>(half *, const half *, int, int, sycl::queue);
+template void launch_bias_add<float>(float *, const float *, int, int, sycl::queue*);
+template void launch_bias_add<bf16>(bf16 *, const bf16 *, int, int, sycl::queue*);
+template void launch_bias_add<half>(half *, const half *, int, int, sycl::queue*);
 
 template <typename T> class fused_bias_residual {
 
@@ -449,7 +449,7 @@ public:
 template <typename T>
 void launch_bias_residual(T *residual, T *hidden_state, T *attn, T *bias,
                           T *attn_bias, int batch, int hidden_dim, int mp_size,
-                          bool preln, sycl::queue stream) {
+                          bool preln, sycl::queue* stream) {
   int total_count = batch * hidden_dim / 4;
 
   sycl::range<1> block_dims(1024);
@@ -457,17 +457,17 @@ void launch_bias_residual(T *residual, T *hidden_state, T *attn, T *bias,
 
   fused_bias_residual<T> fn(residual, hidden_state, attn, bias, attn_bias,
                             total_count, hidden_dim / 4, 1.0 / mp_size, preln);
-  stream.submit([&](sycl::handler &cmd_list) {
+  stream->submit([&](sycl::handler &cmd_list) {
     cmd_list.parallel_for(sycl::nd_range<1>{grid_dims, block_dims}, fn);
   });
 }
 
 template void launch_bias_residual<float>(float *, float *, float *, float *,
-                                          float *, int, int, int, bool, sycl::queue);
+                                          float *, int, int, int, bool, sycl::queue*);
 template void launch_bias_residual<bf16>(bf16 *, bf16 *, bf16 *, bf16 *, bf16 *,
-                                         int, int, int, bool, sycl::queue);
+                                         int, int, int, bool, sycl::queue*);
 template void launch_bias_residual<half>(half *, half *, half *, half *, half *,
-                                         int, int, int, bool, sycl::queue);
+                                         int, int, int, bool, sycl::queue*);
 
 template class fused_bias_residual<half>;
 template class fused_bias_residual<bf16>;
