@@ -20,6 +20,9 @@
 #include <vector>
 using bf16 = sycl::ext::oneapi::experimental::bfloat16;
 
+#define MEGABYTE (1024 * 1024)
+#define GIGABYTE (1024 * 1024 * 1024)
+
 #define WARP_SIZE 32
 #define ONEMKL_OP_T oneapi::mkl::transpose::trans
 #define ONEMKL_OP_N oneapi::mkl::transpose::nontrans
@@ -45,7 +48,7 @@ inline int DS_GET_BLOCKS(const int N)
 class SyclContext {
 public:
     SyclContext()
-    try : _workspace(nullptr), _seed(42), _curr_offset(0) {
+    try : _workspace(nullptr), _seed(42), _curr_offset(0), _workSpaceSize(0), _max_seq_len(0) {
         auto type_ = c10::DeviceType::XPU;
         c10::impl::VirtualGuardImpl impl(type_);
         auto device_ = c10::Device(type_);
@@ -64,7 +67,7 @@ public:
 
     virtual ~SyclContext()
     {
-        _onemklQ = nullptr;
+        /* _onemklQ = nullptr; */
         free(_gen);
 
         auto type_ = c10::DeviceType::XPU;
@@ -79,6 +82,73 @@ public:
         static SyclContext _ctx;
         return _ctx;
     }
+
+    void GenWorkSpace(const unsigned& num_layers,
+                      const unsigned& num_heads,
+                      const size_t& batch_size,
+                      const size_t& prompt_len,
+                      const size_t& hidden_dim,
+                      const unsigned& mp_size,
+                      const bool& external_cache,
+                      const size_t& elem_size,
+                      const unsigned& rank,
+                      unsigned max_out_tokens)
+    {
+        size_t total_size;
+        /* if (!_free_memory_size) { cudaMemGetInfo(&_free_memory_size, &total_size); } */
+
+        // Flash attention requires padded heads and we'll conservatively allocate
+        // for that here. Flash attention is only enabled for head size <= 128 right now
+        const int head_size = hidden_dim / num_heads;
+        const int padded_head_size = head_size <= 32 ? 32 : (head_size <= 64 ? 64 : 128);
+        const int effective_head_size = (head_size > 128) ? head_size : padded_head_size;
+
+        size_t activation_size = 16 * (num_heads * effective_head_size) * batch_size;
+        // Other sequence length dimension is added when the final workSpaceSize is calculated
+        size_t temp_size = batch_size * num_heads * max_out_tokens * 2;
+        size_t cache_size =
+            num_layers * batch_size * ((num_heads * effective_head_size) / mp_size) * 2;
+        /* size_t minimal_requirements = */
+        /*     temp_size + (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE; */
+        /* if (_free_memory_size < minimal_requirements) { */
+        /*     printf("Requested:\t%lu\nFree:\t%lu\nTotal:\t%lu\n", */
+        /*            minimal_requirements, */
+        /*            _free_memory_size, */
+        /*            total_size); */
+        /*     throw std::runtime_error("Workspace can't be allocated, no enough memory."); */
+        /* } */
+
+        _max_seq_len = (size_t)max_out_tokens;
+        size_t workSpaceSize = ((external_cache ? (activation_size + temp_size)
+                                                : (activation_size + temp_size + cache_size))) *
+                               _max_seq_len * elem_size;
+        temp_size *= _max_seq_len * elem_size;
+        if (rank == 0 && !_workspace)
+            printf(
+                "------------------------------------------------------\n"
+                "Requested memory: %f (GigaBytes) \n"
+                "Setting maximum total tokens (input + output) to %lu \n"
+                "------------------------------------------------------\n",
+                (float)workSpaceSize / GIGABYTE,
+                _max_seq_len);
+
+        auto current_queue = this->GetCurrentStream();
+        if (!_workspace) {
+            assert(_workspace == nullptr);
+            /* cudaMalloc(&_workspace, workSpaceSize); */
+            _workspace = sycl::malloc_device(workSpaceSize, *current_queue);
+        } else if (_workSpaceSize < workSpaceSize) {
+            sycl::free(_workspace, *current_queue);
+            /* cudaMalloc(&_workspace, workSpaceSize); */
+            _workspace = sycl::malloc_device(workSpaceSize, *current_queue);
+        }
+
+        if (!_workspace) {
+            throw std::runtime_error("Workspace is null.");
+        }
+        _workSpaceSize = workSpaceSize;
+    }
+
 
     void SetWorkSpace(void* workspace)
     {
@@ -148,5 +218,9 @@ private:
     void* _workspace;
     uint64_t _seed;
     uint64_t _curr_offset;
+
+    size_t _workSpaceSize;
+    size_t _max_seq_len;
+
     std::vector<std::array<int, 3>> _gemm_algos;
 };

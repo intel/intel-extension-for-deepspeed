@@ -6,7 +6,6 @@
 #include "inference_sycl_layers.h"
 #include "onednn_wrappers.hpp"
 
-
 enum class TransformerType : uint8_t { UNKNOWN = 0, GPTType = 1, BERTType = 2 };
 
 // NOTE: this is a temporary and dodgy solution to distinguish GPT and BERT style models
@@ -23,7 +22,6 @@ inline auto infer_transformer_type(at::Tensor& attn_mask) -> TransformerType
         return TransformerType::UNKNOWN;
     }
 }
-
 
 // infer stride of attention mask memory layout based on the model type.
 inline auto get_attn_mask_stride(at::Tensor& attn_mask) -> int
@@ -94,6 +92,7 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 
     auto mask_stride = get_attn_mask_stride(attn_mask);
 
+    auto stream = SyclContext::Instance().GetCurrentStream();
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
                            (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
@@ -109,11 +108,10 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                            head_offset,
                            mask_stride,
                            mp_size,
-                           SyclContext::Instance().GetCurrentStream());
+                           stream);
 
     return attn_scores_c;
 }
-
 
 template <typename T>
 at::Tensor& residual_add_bias(at::Tensor& hidden_state,
@@ -128,6 +126,7 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
 {
     int bsz = residual.size(0) * residual.size(1);
     int hidden_size = residual.size(2);
+    auto stream = SyclContext::Instance().GetCurrentStream();
     if (mlp_after_attn)
         launch_bias_residual(static_cast<T*>(residual.data_ptr()),
                              static_cast<T*>(hidden_state.data_ptr()),
@@ -138,7 +137,7 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
                              hidden_size,
                              mp_size,
                              preln,
-                             SyclContext::Instance().GetCurrentStream());
+                             stream);
     /* else */
     /*     launch_gptj_residual_add<T>( */
     /*         static_cast<T*>(residual.data_ptr()), */
@@ -161,6 +160,7 @@ void ds_layer_norm_internal(T* workspace,
                             float epsilon)
 {
     int bsz = input.size(0) * input.size(1);
+    auto stream = SyclContext::Instance().GetCurrentStream();
     launch_fused_ln(workspace,
                     (const T*)input.data_ptr(),
                     (const T*)gamma.data_ptr(),
@@ -168,20 +168,20 @@ void ds_layer_norm_internal(T* workspace,
                     epsilon,
                     bsz,
                     input.size(2),
-                    SyclContext::Instance().GetCurrentStream());
+                    stream);
 }
 
 template <typename T>
 at::Tensor qkv_unfused_sycl(at::Tensor& output,
-                              at::Tensor& input,
-                              at::Tensor& weight,
-                              at::Tensor& q_scale,
-                              at::Tensor& bias,
-                              at::Tensor& gamma,
-                              at::Tensor& beta,
-                              const float epsilon,
-                              bool add_bias,
-                              bool q_int8)
+                            at::Tensor& input,
+                            at::Tensor& weight,
+                            at::Tensor& q_scale,
+                            at::Tensor& bias,
+                            at::Tensor& gamma,
+                            at::Tensor& beta,
+                            const float epsilon,
+                            bool add_bias,
+                            bool q_int8)
 {
     int bsz = input.size(0) * input.size(1);
     T* workspace = (T*)SyclContext::Instance().GetWorkSpace();
@@ -193,7 +193,8 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
 
     /* cublasSetStream(Context::Instance().GetCublasHandle(), */
     /*                 Context::Instance().GetCurrentStream()); */
-    onednn_matmul_ex(SyclContext::Instance().GetCurrentStream(),
+    auto stream = SyclContext::Instance().GetCurrentStream();
+    onednn_matmul_ex(stream,
                      false,
                      false,
                      bsz,
@@ -204,7 +205,7 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
                      workspace,
                      (T*)weight.data_ptr(),
                      (T*)output.data_ptr());
-    
+
     if (add_bias)
         launch_bias_add((T*)output.data_ptr(),
                         (T*)bias.data_ptr(),
@@ -213,12 +214,8 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
                         SyclContext::Instance().GetCurrentStream());
 
     auto output_stride = c10::TensorType::contiguousStridesOf(input.sizes());
-    return at::from_blob(workspace, 
-                            input.sizes(), 
-                            output_stride,
-                            nullptr,
-                            input.options(),
-                            input.device());
+    return at::from_blob(
+        workspace, input.sizes(), output_stride, nullptr, input.options(), input.device());
 }
 
 template <typename T>
@@ -246,11 +243,12 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                        .device(torch::kXPU)
                        .requires_grad(false);
 
-    auto output_stride = c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size});
-    auto output = at::from_blob(workspace, 
-                                {input.size(0), input.size(1), out_size}, 
-                                output_stride, 
-                                nullptr, 
+    auto output_stride =
+        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size});
+    auto output = at::from_blob(workspace,
+                                {input.size(0), input.size(1), out_size},
+                                output_stride,
+                                nullptr,
                                 options,
                                 input.device());
     auto inp_norm = qkv_unfused_sycl<T>(
@@ -258,7 +256,6 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
 
     return {output, inp_norm};
 }
-
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
