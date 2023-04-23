@@ -73,7 +73,7 @@ void column_sum_reduce(const bf16* inp,
     if (idx < width) {
         int offset = item_ct1.get_local_id(1) * width + idx;
         for (int r = item_ct1.get_local_id(1); r < rows; r += MAX_SG_NUM) {
-            localSum += float(inp_cast[offset]);
+            localSum += bf16::to_float(inp_cast[offset]);
             offset += y_stride;
         }
     }
@@ -93,7 +93,7 @@ void column_sum_reduce(const bf16* inp,
 
     if (item_ct1.get_local_id(2) == 0) {
         int pos = item_ct1.get_group(2) * MAX_SG_NUM + item_ct1.get_local_id(1);
-        if (pos < width) out_cast[pos] = bf16(sum);
+        if (pos < width) out_cast[pos] = bf16::from_float(sum);
     }
 }
 
@@ -168,24 +168,24 @@ void fused_add2_kernel(const int N,
     DPCPP_1D_KERNEL_LOOP(j, N)
     {
         float4 val;
-        float4 inp1_reg = {float(inp1_cast[j].x()),
-                           float(inp1_cast[j].y()),
-                           float(inp1_cast[j].z()),
-                           float(inp1_cast[j].w())};
-        float4 inp2_reg = {float(inp2_cast[j].x()),
-                           float(inp2_cast[j].y()),
-                           float(inp2_cast[j].z()),
-                           float(inp2_cast[j].w())};
+        float4 inp1_reg = {bf16::to_float(inp1_cast[j].x()),
+                           bf16::to_float(inp1_cast[j].y()),
+                           bf16::to_float(inp1_cast[j].z()),
+                           bf16::to_float(inp1_cast[j].w())};
+        float4 inp2_reg = {bf16::to_float(inp2_cast[j].x()),
+                           bf16::to_float(inp2_cast[j].y()),
+                           bf16::to_float(inp2_cast[j].z()),
+                           bf16::to_float(inp2_cast[j].w())};
 
         val.x() = inp1_reg.x() + inp2_reg.x();
         val.y() = inp1_reg.y() + inp2_reg.y();
         val.z() = inp1_reg.z() + inp2_reg.z();
         val.w() = inp1_reg.w() + inp2_reg.w();
 
-        out_cast[j] = {bf16(val.x()),
-                       bf16(val.y()),
-                       bf16(val.z()),
-                       bf16(val.w())};
+        out_cast[j] = {bf16::from_float(val.x()),
+                       bf16::from_float(val.y()),
+                       bf16::from_float(val.z()),
+                       bf16::from_float(val.w())};
     }
 }
 

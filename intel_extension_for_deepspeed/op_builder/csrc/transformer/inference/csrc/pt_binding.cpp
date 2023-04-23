@@ -257,7 +257,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (SYCL)");
     m.def("softmax_bf16", &ds_softmax<bf16>, "DeepSpeed SoftMax with bf16 (SYCL)");
-    m.def("softmax_fp16", &ds_softmax<half>, "DeepSpeed SoftMax with fp16 (SYCL)");
+    m.def("softmax_fp16", &ds_softmax<fp16>, "DeepSpeed SoftMax with fp16 (SYCL)");
     m.def("residual_add_bias_fp32",
           &residual_add_bias<float>,
           "DeepSpeed residual add with fp32 (SYCL)");
@@ -265,9 +265,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &residual_add_bias<bf16>,
           "DeepSpeed residual add with bf16 (SYCL)");
     m.def("residual_add_bias_fp16",
-          &residual_add_bias<half>,
+          &residual_add_bias<fp16>,
           "DeepSpeed residual add with fp16 (SYCL)");
     m.def("qkv_gemm_bf16", &ds_qkv_gemm<bf16>, "DeepSpeed qkv gemm with bf16 (SYCL)");
+    m.def("qkv_gemm_fp16", &ds_qkv_gemm<fp16>, "DeepSpeed qkv gemm with fp16 (SYCL)");
     m.def("allocate_workspace_fp32",
           &allocate_workspace<float>,
           "DeepSpeed memory allocation for GPT inference with fp32 (SYCL)");
@@ -275,6 +276,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &allocate_workspace<bf16>,
           "DeepSpeed memory allocation for GPT inference with bf16 (SYCL)");
     m.def("allocate_workspace_fp16",
-          &allocate_workspace<sycl::half>,
+          &allocate_workspace<fp16>,
           "DeepSpeed memory allocation for GPT inference with fp16 (SYCL)");
 }

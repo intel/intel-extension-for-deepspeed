@@ -651,21 +651,3 @@ template void launch_attn_softmax_v2(half* vals,
                                      int mask_stride,
                                      int mp_size,
                                      sycl::queue);
-
-#define DEF_ATTN_SOFTMAX_V2_HALF(_iter) template class attn_softmax_v2<half, _iter>
-
-#define DEF_ATTN_SOFTMAX_V2_BF16(_iter) template class attn_softmax_v2<bf16, _iter>
-
-#define FOREACH_ITERATIONS(cb) \
-    cb(1);                     \
-    cb(2);                     \
-    cb(4);                     \
-    cb(8);                     \
-    cb(16);                    \
-    cb(32);                    \
-    cb(64)
-
-FOREACH_ITERATIONS(DEF_ATTN_SOFTMAX_V2_HALF);
-#ifdef BF16_AVAILABLE
-FOREACH_ITERATIONS(DEF_ATTN_SOFTMAX_V2_BF16);
-#endif

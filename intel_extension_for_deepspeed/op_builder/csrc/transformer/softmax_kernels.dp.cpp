@@ -184,14 +184,14 @@ void attn_softmax(bf16* vals,
         if (data_id < seq_length) {
             ushort4 mask_ushort = attn_mask_cast[mask_offset + data_id];
             ushort4 val_ushort = val_cast[data_offset + data_id];
-            float4 mask = {float(mask_ushort.x()),
-                           float(mask_ushort.y()),
-                           float(mask_ushort.z()),
-                           float(mask_ushort.w())};
-            data[i] = {float(val_ushort.x()),
-                       float(val_ushort.y()),
-                       float(val_ushort.z()),
-                       float(val_ushort.w())};
+            float4 mask = {bf16::to_float(mask_ushort.x()),
+                           bf16::to_float(mask_ushort.y()),
+                           bf16::to_float(mask_ushort.z()),
+                           bf16::to_float(mask_ushort.w())};
+            data[i] = {bf16::to_float(val_ushort.x()),
+                       bf16::to_float(val_ushort.y()),
+                       bf16::to_float(val_ushort.z()),
+                       bf16::to_float(val_ushort.w())};
 
             data[i].x() += mask.x();
             data[i].y() += mask.y();
@@ -278,10 +278,10 @@ void attn_softmax(bf16* vals,
 
         int data_id = i * iteration_stride + seq_lane;
         if (data_id < seq_length) {
-            ushort4 data_ushort = {bf16(data[i].x()),
-                                   bf16(data[i].y()),
-                                   bf16(data[i].z()),
-                                   bf16(data[i].w())};
+            ushort4 data_ushort = {bf16::from_float(data[i].x()),
+                                   bf16::from_float(data[i].y()),
+                                   bf16::from_float(data[i].z()),
+                                   bf16::from_float(data[i].w())};
             val_cast[data_offset + data_id] = data_ushort;
         }
     }
@@ -726,8 +726,8 @@ void softmax_backward_kernel_v2(T* grad /* input & output*/,
         for (int i = 0; i < ITERATIONS; ++i) {
             int curr_idx = item_ct1.get_local_id(2) + i * MAX_SG_NUM;
             if (curr_idx < softmax_length) {
-                grad_reg[i] = float(grad_cast[i * MAX_SG_NUM]);
-                output_reg[i] = float(output_cast[i * MAX_SG_NUM]);
+                grad_reg[i] = bf16::to_float(grad_cast[i * MAX_SG_NUM]);
+                output_reg[i] = bf16::to_float(output_cast[i * MAX_SG_NUM]);
                 sum += grad_reg[i] * output_reg[i];
             }
         }
@@ -740,7 +740,7 @@ void softmax_backward_kernel_v2(T* grad /* input & output*/,
         for (int i = 0; i < ITERATIONS; ++i) {
             int curr_idx = item_ct1.get_local_id(2) + i * MAX_SG_NUM;
             if (curr_idx < softmax_length) {
-                grad_cast[i * MAX_SG_NUM] = bf16(output_reg[i] * (grad_reg[i] - sum));
+                grad_cast[i * MAX_SG_NUM] = bf16::from_float(output_reg[i] * (grad_reg[i] - sum));
             }
         }
     } else {
