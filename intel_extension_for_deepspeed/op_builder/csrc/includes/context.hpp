@@ -5,20 +5,13 @@
 #include <ipex.h>
 #include <torch/extension.h>
 #include <torch/library.h>
-#if __has_include(<sycl/sycl.hpp>)
-#include <sycl/sycl.hpp>
-#elif __has_include(<CL/sycl.hpp>)
-#include <CL/sycl.hpp>
-#else
-#error "Unsupported compiler"
-#endif
 #include <cassert>
-#include <ext/oneapi/experimental/bfloat16.hpp>
 #include <iostream>
 #include <oneapi/mkl.hpp>
 #include <oneapi/mkl/rng/device.hpp>
 #include <vector>
-using bf16 = sycl::ext::oneapi::experimental::bfloat16;
+
+#include "compatible.h"
 
 #define MEGABYTE (1024 * 1024)
 #define GIGABYTE (1024 * 1024 * 1024)
@@ -143,12 +136,9 @@ public:
             _workspace = sycl::malloc_device(workSpaceSize, *current_queue);
         }
 
-        if (!_workspace) {
-            throw std::runtime_error("Workspace is null.");
-        }
+        if (!_workspace) { throw std::runtime_error("Workspace is null."); }
         _workSpaceSize = workSpaceSize;
     }
-
 
     void SetWorkSpace(void* workspace)
     {

@@ -41,7 +41,7 @@ class SYCLOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def cxx_args(self):
-        return ['-g', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64']
+        return ['-O3', '-g', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64']
 
     def extra_ldflags(self):
         return ['-fPIC', '-Wl,-export-dynamic']
