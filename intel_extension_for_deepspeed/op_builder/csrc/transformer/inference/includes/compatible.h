@@ -24,8 +24,8 @@ using fp16 = sycl::half;
 
 using float4 = sycl::vec<float, 4>;
 using float2 = sycl::vec<float, 2>;
-using half4 = sycl::vec<half, 4>;
-using half2 = sycl::vec<half, 2>;
+using half4 = sycl::vec<fp16, 4>;
+using half2 = sycl::vec<fp16, 2>;
 using bf164 = sycl::vec<bf16, 4>;
 using bf162 = sycl::vec<bf16, 2>;
 using uint4 = sycl::vec<uint, 4>;
