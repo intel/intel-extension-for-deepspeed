@@ -22,18 +22,18 @@ class InferenceBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/inference/softmax.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/pt_binding.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/gelu.cpp'),
-            sycl_kernel_path('csrc/transformer/onednn_wrappers.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/layer_norm.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/softmax.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/pt_binding.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/gelu.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/onednn_wrappers.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.cpp'),
         ]
 
     def extra_ldflags(self):
         return []
 
     def include_paths(self):
-        includes = [sycl_kernel_include('csrc/includes'), 'csrc/includes']
-        # includes = [sycl_kernel_include('csrc/transformer/inference/includes'), 'csrc/transformer/inference/includes']
+        # includes = [sycl_kernel_include('csrc/includes'), 'csrc/includes']
+        includes = [sycl_kernel_include('csrc/transformer/inference/includes'), 'csrc/transformer/inference/includes']
         return includes
 

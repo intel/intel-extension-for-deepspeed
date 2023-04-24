@@ -527,7 +527,7 @@ public:
                                       mask_stride,                 \
                                       mp_size,                     \
                                       reduce_width);               \
-    stream->submit([&](sycl::handler& cmd_list) {                   \
+    stream.submit([&](sycl::handler& cmd_list) {                   \
         cmd_list.parallel_for(sycl::nd_range<1>{grid, block}, fn); \
     });
 
@@ -547,7 +547,7 @@ void launch_attn_softmax_v2(T* vals,
                             int head_offset,
                             int mask_stride,
                             int mp_size,
-                            sycl::queue* stream)
+                            sycl::queue stream)
 {
     const int total_count = batch_size * heads * num_seq;
 
@@ -616,7 +616,7 @@ template void launch_attn_softmax_v2(float* vals,
                                      int head_offset,
                                      int mask_stride,
                                      int mp_size,
-                                     sycl::queue*);
+                                     sycl::queue);
 
 template void launch_attn_softmax_v2(bf16* vals,
                                      bf16* mask,
@@ -633,7 +633,7 @@ template void launch_attn_softmax_v2(bf16* vals,
                                      int head_offset,
                                      int mask_stride,
                                      int mp_size,
-                                     sycl::queue*);
+                                     sycl::queue);
 
 template void launch_attn_softmax_v2(half* vals,
                                      half* mask,
@@ -650,7 +650,7 @@ template void launch_attn_softmax_v2(half* vals,
                                      int head_offset,
                                      int mask_stride,
                                      int mp_size,
-                                     sycl::queue*);
+                                     sycl::queue);
 
 #define DEF_ATTN_SOFTMAX_V2_HALF(_iter) template class attn_softmax_v2<half, _iter>
 
