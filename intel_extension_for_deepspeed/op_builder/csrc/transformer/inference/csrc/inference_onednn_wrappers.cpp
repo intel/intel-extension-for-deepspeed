@@ -1,4 +1,4 @@
-#include "onednn_wrappers.hpp"
+#include "inference_onednn_wrappers.hpp"
 #include "inference_sycl_layers.h"
 #include <oneapi/dnnl/dnnl_sycl.hpp>
 

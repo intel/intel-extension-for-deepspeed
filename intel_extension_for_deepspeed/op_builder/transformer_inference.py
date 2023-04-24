@@ -25,7 +25,7 @@ class InferenceBuilder(SYCLOpBuilder):
             sycl_kernel_path('csrc/transformer/inference/csrc/softmax.cpp'),
             sycl_kernel_path('csrc/transformer/inference/csrc/pt_binding.cpp'),
             sycl_kernel_path('csrc/transformer/inference/csrc/gelu.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/onednn_wrappers.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp'),
             sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.cpp'),
         ]
 

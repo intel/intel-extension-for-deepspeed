@@ -2,9 +2,9 @@
 #include <stdexcept>
 #include <vector>
 #include "compatible.h"
-#include "context.hpp"
+#include "inference_context.hpp"
 #include "inference_sycl_layers.h"
-#include "onednn_wrappers.hpp"
+#include "inference_onednn_wrappers.hpp"
 
 enum class TransformerType : uint8_t { UNKNOWN = 0, GPTType = 1, BERTType = 2 };
 
