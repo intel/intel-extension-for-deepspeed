@@ -92,7 +92,6 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
 
     auto mask_stride = get_attn_mask_stride(attn_mask);
 
-    auto stream = SyclContext::Instance().GetCurrentStream();
     launch_attn_softmax_v2((T*)attn_scores_c.data_ptr(),
                            (attn_mask.sizes().size() > 1 ? (T*)attn_mask.data_ptr() : nullptr),
                            (alibi.sizes().size() > 1 ? (T*)alibi.data_ptr() : nullptr),
@@ -108,7 +107,7 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                            head_offset,
                            mask_stride,
                            mp_size,
-                           stream);
+                           SyclContext::Instance().GetCurrentStream());
 
     return attn_scores_c;
 }
@@ -126,7 +125,6 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
 {
     int bsz = residual.size(0) * residual.size(1);
     int hidden_size = residual.size(2);
-    auto stream = SyclContext::Instance().GetCurrentStream();
     if (mlp_after_attn)
         launch_bias_residual(static_cast<T*>(residual.data_ptr()),
                              static_cast<T*>(hidden_state.data_ptr()),
@@ -137,7 +135,7 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
                              hidden_size,
                              mp_size,
                              preln,
-                             stream);
+                             SyclContext::Instance().GetCurrentStream());
     /* else */
     /*     launch_gptj_residual_add<T>( */
     /*         static_cast<T*>(residual.data_ptr()), */
@@ -160,7 +158,6 @@ void ds_layer_norm_internal(T* workspace,
                             float epsilon)
 {
     int bsz = input.size(0) * input.size(1);
-    auto stream = SyclContext::Instance().GetCurrentStream();
     launch_fused_ln(workspace,
                     (const T*)input.data_ptr(),
                     (const T*)gamma.data_ptr(),
@@ -168,7 +165,7 @@ void ds_layer_norm_internal(T* workspace,
                     epsilon,
                     bsz,
                     input.size(2),
-                    stream);
+                    SyclContext::Instance().GetCurrentStream());
 }
 
 template <typename T>
@@ -193,19 +190,18 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
 
     /* cublasSetStream(Context::Instance().GetCublasHandle(), */
     /*                 Context::Instance().GetCurrentStream()); */
-    auto stream = SyclContext::Instance().GetCurrentStream();
-    onednn_matmul_ex(stream,
-                     false,
-                     false,
-                     bsz,
-                     weight.size(1),
-                     input.size(2),
-                     alpha,
-                     gemm_beta,
-                     workspace,
-                     (T*)weight.data_ptr(),
-                     (T*)output.data_ptr());
-
+    onednn_matmul_ex<T>(SyclContext::Instance().GetCurrentStream(),
+                        false,
+                        false,
+                        bsz,
+                        weight.size(1),
+                        input.size(2),
+                        alpha,
+                        gemm_beta,
+                        workspace,
+                        (T*)weight.data_ptr(),
+                        (T*)output.data_ptr());
+    
     if (add_bias)
         launch_bias_add((T*)output.data_ptr(),
                         (T*)bias.data_ptr(),
