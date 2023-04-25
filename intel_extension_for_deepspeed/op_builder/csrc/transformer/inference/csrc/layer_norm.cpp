@@ -193,13 +193,22 @@ void launch_fused_ln(T *output, const T *vals, const T *gamma, const T *beta,
       (rows < groups_per_block_max) ? rows : groups_per_block_max;
   const int groups_launch = (groups_per_block + rows - 1) / groups_per_block;
 
-  sycl::range<2> block{(unsigned long)threadsPerGroup, (size_t)groups_per_block};
-  sycl::range<2> grid{(unsigned long)threadsPerGroup, (size_t)(groups_launch * groups_per_block)};
+  sycl::range<2> block{(unsigned long)groups_per_block, (size_t)threadsPerGroup};
+  sycl::range<2> grid{(unsigned long)(groups_launch * groups_per_block), (size_t)threadsPerGroup};
 
   const int elems_per_step = threadsPerGroup * h_per_step;
   const int external_unRoll =
       (elems_per_row + elems_per_step - 1) / elems_per_step;
 
+  /* constexpr sycl::half test_inf = -std::numeric_limits<sycl::half>::infinity(); */
+  /* float test_inf_f = static_cast<float>(test_inf); */
+  /* printf("%f\n", test_inf_f); */
+
+  /* uint16_t half_neg_inf = 0xFC00; */ 
+  /* constexpr sycl::half test_ninf = reinterpret_cast<sycl::half>(0xFC00); */
+  /* float test_ninf_f = static_cast<float>(test_ninf); */
+  /* printf("%f\n", test_ninf_f); */
+  
   if (is_subblock_schedule) {
     // <=128
     if (threadsPerGroup == 1) {
@@ -443,8 +452,8 @@ void launch_fused_residual_ln(T *output, const T *vals, const T *residual,
   /* dim3 block(threadsPerGroup, groups_per_block); */
   /* dim3 grid(groups_launch); */
 
-  sycl::range<2> block{(unsigned long)threadsPerGroup, (size_t)groups_per_block};
-  sycl::range<2> grid{(unsigned long)threadsPerGroup, (size_t)(groups_launch * groups_per_block)};
+  sycl::range<2> block{(unsigned long)groups_per_block, (size_t)threadsPerGroup};
+  sycl::range<2> grid{(unsigned long)(groups_launch * groups_per_block), (size_t)threadsPerGroup};
   
   const int elems_per_step = threadsPerGroup * h_per_step;
   const int external_unRoll =
