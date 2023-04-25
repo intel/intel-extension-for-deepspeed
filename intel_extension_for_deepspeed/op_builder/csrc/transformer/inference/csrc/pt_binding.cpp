@@ -169,6 +169,32 @@ void ds_layer_norm_internal(T* workspace,
 }
 
 template <typename T>
+at::Tensor ds_layer_norm_test(at::Tensor& input,
+                              at::Tensor& gamma,
+                              at::Tensor& beta,
+                              float epsilon)
+{
+    int bsz = input.size(0) * input.size(1);
+    
+    T* workspace = (T*)SyclContext::Instance().GetWorkSpace();
+    /* workspace += (3 * bsz * input.size(2)); */
+    
+    launch_fused_ln(workspace,
+                    (const T*)input.data_ptr(),
+                    (const T*)gamma.data_ptr(),
+                    (const T*)beta.data_ptr(),
+                    epsilon,
+                    bsz,
+                    input.size(2),
+                    SyclContext::Instance().GetCurrentStream());
+    
+    auto output_stride = c10::TensorType::contiguousStridesOf(input.sizes());
+    
+    return at::from_blob(
+        workspace, input.sizes(), output_stride, nullptr, input.options(), input.device());
+}
+
+template <typename T>
 at::Tensor qkv_unfused_sycl(at::Tensor& output,
                             at::Tensor& input,
                             at::Tensor& weight,
@@ -255,27 +281,30 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (SYCL)");
-    m.def("softmax_bf16", &ds_softmax<bf16>, "DeepSpeed SoftMax with bf16 (SYCL)");
-    m.def("softmax_fp16", &ds_softmax<fp16>, "DeepSpeed SoftMax with fp16 (SYCL)");
-    m.def("residual_add_bias_fp32",
-          &residual_add_bias<float>,
-          "DeepSpeed residual add with fp32 (SYCL)");
-    m.def("residual_add_bias_bf16",
-          &residual_add_bias<bf16>,
-          "DeepSpeed residual add with bf16 (SYCL)");
-    m.def("residual_add_bias_fp16",
-          &residual_add_bias<fp16>,
-          "DeepSpeed residual add with fp16 (SYCL)");
-    m.def("qkv_gemm_bf16", &ds_qkv_gemm<bf16>, "DeepSpeed qkv gemm with bf16 (SYCL)");
-    m.def("qkv_gemm_fp16", &ds_qkv_gemm<fp16>, "DeepSpeed qkv gemm with fp16 (SYCL)");
-    m.def("allocate_workspace_fp32",
-          &allocate_workspace<float>,
-          "DeepSpeed memory allocation for GPT inference with fp32 (SYCL)");
-    m.def("allocate_workspace_bf16",
-          &allocate_workspace<bf16>,
-          "DeepSpeed memory allocation for GPT inference with bf16 (SYCL)");
-    m.def("allocate_workspace_fp16",
-          &allocate_workspace<fp16>,
-          "DeepSpeed memory allocation for GPT inference with fp16 (SYCL)");
+  m.def("layer_norm_bf16", &ds_layer_norm_test<bf16>, "test DeepSpeed LayerNorm with bf16 (SYCL)");
+  m.def("layer_norm_fp16", &ds_layer_norm_test<sycl::half>, "test DeepSpeed LayerNorm  with fp16 (SYCL)");
+  
+  m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (SYCL)");
+  m.def("softmax_bf16", &ds_softmax<bf16>, "DeepSpeed SoftMax with bf16 (SYCL)");
+  m.def("softmax_fp16", &ds_softmax<fp16>, "DeepSpeed SoftMax with fp16 (SYCL)");
+  m.def("residual_add_bias_fp32",
+        &residual_add_bias<float>,
+        "DeepSpeed residual add with fp32 (SYCL)");
+  m.def("residual_add_bias_bf16",
+        &residual_add_bias<bf16>,
+        "DeepSpeed residual add with bf16 (SYCL)");
+  m.def("residual_add_bias_fp16",
+        &residual_add_bias<fp16>,
+        "DeepSpeed residual add with fp16 (SYCL)");
+  m.def("qkv_gemm_bf16", &ds_qkv_gemm<bf16>, "DeepSpeed qkv gemm with bf16 (SYCL)");
+  m.def("qkv_gemm_fp16", &ds_qkv_gemm<fp16>, "DeepSpeed qkv gemm with fp16 (SYCL)");
+  m.def("allocate_workspace_fp32",
+        &allocate_workspace<float>,
+        "DeepSpeed memory allocation for GPT inference with fp32 (SYCL)");
+  m.def("allocate_workspace_bf16",
+        &allocate_workspace<bf16>,
+        "DeepSpeed memory allocation for GPT inference with bf16 (SYCL)");
+  m.def("allocate_workspace_fp16",
+        &allocate_workspace<fp16>,
+        "DeepSpeed memory allocation for GPT inference with fp16 (SYCL)");
 }

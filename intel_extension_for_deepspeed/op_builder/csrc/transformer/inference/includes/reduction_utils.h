@@ -210,21 +210,21 @@ float init<ROpType::Max>()
 template <>
 sycl::half init<ROpType::Add>()
 {
-    constexpr sycl::half zero = {0x0000};
+    constexpr sycl::half zero = 0.0;
     return sycl::half(zero);
 }
 
 template <>
 sycl::half init<ROpType::Min>()
 {
-    constexpr sycl::half inf = {0x7C00};
+    constexpr sycl::half inf = std::numeric_limits<sycl::half>::infinity();
     return sycl::half(inf);
 }
 
 template <>
 sycl::half init<ROpType::Max>()
 {
-    constexpr sycl::half neg_inf = {0xFC00};
+    constexpr sycl::half neg_inf = -std::numeric_limits<sycl::half>::infinity();
     return sycl::half(neg_inf);
 }
 
@@ -232,21 +232,21 @@ template <>
 sycl::half2 init<ROpType::Add>()
 {
     /* constexpr sycl::half2 zero = {0x0000, 0x0000}; */
-    return {0x0000, 0x0000};
+    return {0.0, 0.0};
 }
 
 template <>
 sycl::half2 init<ROpType::Min>()
 {
     /* constexpr sycl::half2 inf = {0x7C00, 0x7C00}; */
-    return {0x7C00, 0x7C00};
+    return {std::numeric_limits<sycl::half>::infinity(), std::numeric_limits<sycl::half>::infinity()};
 }
 
 template <>
 sycl::half2 init<ROpType::Max>()
 {
     /* constexpr sycl::half2 neg_inf = {0xFC00, 0xFC00}; */
-    return {0xFC00, 0xFC00};
+    return {-std::numeric_limits<sycl::half>::infinity(), -std::numeric_limits<sycl::half>::infinity()};
 }
 
 template <ROpType Op, typename T>
