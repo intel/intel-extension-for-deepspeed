@@ -38,9 +38,9 @@ inline int DS_GET_BLOCKS(const int N)
         1);
 }
 
-class SyclContext {
+class InferenceContext {
 public:
-    SyclContext()
+    InferenceContext()
     try : _workspace(nullptr), _seed(42), _curr_offset(0), _workSpaceSize(0), _max_seq_len(0) {
         auto type_ = c10::DeviceType::XPU;
         c10::impl::VirtualGuardImpl impl(type_);
@@ -58,7 +58,7 @@ public:
         std::exit(1);
     }
 
-    virtual ~SyclContext()
+    virtual ~InferenceContext()
     {
         /* _onemklQ = nullptr; */
         free(_gen);
@@ -70,9 +70,9 @@ public:
         sycl::free(_workspace, xpu::get_queue_from_stream(dpcpp_stream));
     }
 
-    static SyclContext& Instance()
+    static InferenceContext& Instance()
     {
-        static SyclContext _ctx;
+        static InferenceContext _ctx;
         return _ctx;
     }
 
@@ -85,7 +85,8 @@ public:
                       const bool& external_cache,
                       const size_t& elem_size,
                       const unsigned& rank,
-                      unsigned max_out_tokens)
+                      unsigned max_out_tokens,
+                      unsigned min_out_tokens)
     {
         size_t total_size;
         /* if (!_free_memory_size) { cudaMemGetInfo(&_free_memory_size, &total_size); } */
@@ -116,14 +117,15 @@ public:
                                                 : (activation_size + temp_size + cache_size))) *
                                _max_seq_len * elem_size;
         temp_size *= _max_seq_len * elem_size;
-        if (rank == 0 && !_workspace)
+
+        if (_max_seq_len < min_out_tokens) {
             printf(
-                "------------------------------------------------------\n"
-                "Requested memory: %f (GigaBytes) \n"
-                "Setting maximum total tokens (input + output) to %lu \n"
-                "------------------------------------------------------\n",
-                (float)workSpaceSize / GIGABYTE,
-                _max_seq_len);
+                "Allocatable workspace available (%d tokens) is less than minimum requested "
+                "workspace (%d tokens)\n",
+                _max_seq_len,
+                min_out_tokens);
+            throw std::runtime_error("Workspace can't be allocated, not enough memory");
+        }
 
         auto current_queue = this->GetCurrentStream();
         if (!_workspace) {
@@ -135,13 +137,18 @@ public:
             /* cudaMalloc(&_workspace, workSpaceSize); */
             _workspace = sycl::malloc_device(workSpaceSize, current_queue);
         }
+        if (rank == 0 && !_workspace)
+            printf(
+                "------------------------------------------------------\n"
+                "Requested memory: %f (GigaBytes) \n"
+                "Setting maximum total tokens (input + output) to %lu \n"
+                "------------------------------------------------------\n",
+                (float)workSpaceSize / GIGABYTE,
+                _max_seq_len);
 
-        if (!_workspace) {
-            throw std::runtime_error("Workspace is null.");
-        }
+        if (!_workspace) { throw std::runtime_error("Workspace is null."); }
         _workSpaceSize = workSpaceSize;
     }
-
 
     void SetWorkSpace(void* workspace)
     {
@@ -153,9 +160,6 @@ public:
 
     sycl::queue GetCurrentStream()
     {
-        // get current pytorch stream.
-        // return &xpu::dpcpp::getCurrentDPCPPStream().dpcpp_queue();
-
         auto type_ = c10::DeviceType::XPU;
         c10::impl::VirtualGuardImpl impl(type_);
         auto device_ = c10::Device(type_);
@@ -211,7 +215,7 @@ private:
     void* _workspace;
     uint64_t _seed;
     uint64_t _curr_offset;
-  
+
     size_t _workSpaceSize;
     size_t _max_seq_len;
 

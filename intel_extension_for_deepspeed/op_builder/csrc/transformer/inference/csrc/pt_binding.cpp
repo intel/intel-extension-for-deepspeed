@@ -3,8 +3,13 @@
 #include <vector>
 #include "compatible.h"
 #include "inference_context.hpp"
-#include "inference_sycl_layers.h"
 #include "inference_onednn_wrappers.hpp"
+#include "inference_sycl_layers.h"
+
+// NOTE: This activation function type enum should be always in sync
+// with the python counterpart, otherwise the casting from python binding
+// will be incorrect.
+enum class ActivationFuncType { UNKNOWN = 0, GELU = 1, ReLU = 2 };
 
 enum class TransformerType : uint8_t { UNKNOWN = 0, GPTType = 1, BERTType = 2 };
 
@@ -50,18 +55,20 @@ void allocate_workspace(unsigned hidden_dim,
                         unsigned mp_size = 1,
                         bool external_cache = false,
                         unsigned rank = 0,
-                        unsigned max_out_tokens = 1024)
+                        unsigned max_out_tokens = 1024,
+                        unsigned min_out_tokens = 1)
 {
-    SyclContext::Instance().GenWorkSpace(num_layers,
-                                         num_heads,
-                                         batch_size,
-                                         prompt_length,
-                                         hidden_dim,
-                                         mp_size,
-                                         external_cache,
-                                         sizeof(T),
-                                         rank,
-                                         max_out_tokens);
+    InferenceContext::Instance().GenWorkSpace(num_layers,
+                                              num_heads,
+                                              batch_size,
+                                              prompt_length,
+                                              hidden_dim,
+                                              mp_size,
+                                              external_cache,
+                                              sizeof(T),
+                                              rank,
+                                              max_out_tokens,
+                                              min_out_tokens);
 }
 
 template <typename T>
@@ -107,7 +114,7 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
                            head_offset,
                            mask_stride,
                            mp_size,
-                           SyclContext::Instance().GetCurrentStream());
+                           InferenceContext::Instance().GetCurrentStream());
 
     return attn_scores_c;
 }
@@ -135,18 +142,9 @@ at::Tensor& residual_add_bias(at::Tensor& hidden_state,
                              hidden_size,
                              mp_size,
                              preln,
-                             SyclContext::Instance().GetCurrentStream());
-    /* else */
-    /*     launch_gptj_residual_add<T>( */
-    /*         static_cast<T*>(residual.data_ptr()), */
-    /*         static_cast<T*>(hidden_state.data_ptr()), */
-    /*         static_cast<T*>(attention_output.data_ptr()), */
-    /*         static_cast<T*>(final_bias.data_ptr()), */
-    /*         static_cast<T*>((add_bias ? attention_bias.data_ptr() : nullptr)), */
-    /*         hidden_size, */
-    /*         bsz, */
-    /*         mp_size, */
-    /*         Context::Instance().GetCurrentStream()); */
+                             InferenceContext::Instance().GetCurrentStream());
+    else
+        throw std::runtime_error("mlp_after_attn=true is not supported!");
     return residual;
 }
 
@@ -165,20 +163,17 @@ void ds_layer_norm_internal(T* workspace,
                     epsilon,
                     bsz,
                     input.size(2),
-                    SyclContext::Instance().GetCurrentStream());
+                    InferenceContext::Instance().GetCurrentStream());
 }
 
 template <typename T>
-at::Tensor ds_layer_norm_test(at::Tensor& input,
-                              at::Tensor& gamma,
-                              at::Tensor& beta,
-                              float epsilon)
+at::Tensor ds_layer_norm_test(at::Tensor& input, at::Tensor& gamma, at::Tensor& beta, float epsilon)
 {
     int bsz = input.size(0) * input.size(1);
-    
-    T* workspace = (T*)SyclContext::Instance().GetWorkSpace();
+
+    T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
     /* workspace += (3 * bsz * input.size(2)); */
-    
+
     launch_fused_ln(workspace,
                     (const T*)input.data_ptr(),
                     (const T*)gamma.data_ptr(),
@@ -186,10 +181,10 @@ at::Tensor ds_layer_norm_test(at::Tensor& input,
                     epsilon,
                     bsz,
                     input.size(2),
-                    SyclContext::Instance().GetCurrentStream());
-    
+                    InferenceContext::Instance().GetCurrentStream());
+
     auto output_stride = c10::TensorType::contiguousStridesOf(input.sizes());
-    
+
     return at::from_blob(
         workspace, input.sizes(), output_stride, nullptr, input.options(), input.device());
 }
@@ -204,36 +199,38 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
                             at::Tensor& beta,
                             const float epsilon,
                             bool add_bias,
-                            bool q_int8)
+                            bool q_int8,
+                            bool transposed_mode)
 {
     int bsz = input.size(0) * input.size(1);
-    T* workspace = (T*)SyclContext::Instance().GetWorkSpace();
+    T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
     workspace += (3 * bsz * input.size(2));
     ds_layer_norm_internal<T>(workspace, input, gamma, beta, epsilon);
 
-    float alpha = (T)1.0;
-    float gemm_beta = (T)0.0;
+    if (q_int8) {
+        throw std::runtime_error("q_int8=true is not supported!");
+    } else {
+        float alpha = (T)1.0;
+        float gemm_beta = (T)0.0;
 
-    /* cublasSetStream(Context::Instance().GetCublasHandle(), */
-    /*                 Context::Instance().GetCurrentStream()); */
-    onednn_matmul_ex<T>(SyclContext::Instance().GetCurrentStream(),
-                        false,
-                        false,
-                        bsz,
-                        weight.size(1),
-                        input.size(2),
-                        alpha,
-                        gemm_beta,
-                        workspace,
-                        (T*)weight.data_ptr(),
-                        (T*)output.data_ptr());
-    
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            weight.size(1),
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            workspace,
+                            (T*)weight.data_ptr(),
+                            (T*)output.data_ptr());
+    }
     if (add_bias)
         launch_bias_add((T*)output.data_ptr(),
                         (T*)bias.data_ptr(),
                         q_int8 ? weight.size(0) : weight.size(1),
                         bsz,
-                        SyclContext::Instance().GetCurrentStream());
+                        InferenceContext::Instance().GetCurrentStream());
 
     auto output_stride = c10::TensorType::contiguousStridesOf(input.sizes());
     return at::from_blob(
@@ -253,11 +250,12 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     bool external_cache,
                                     unsigned mp_size,
                                     unsigned rank,
-                                    bool q_int8)
+                                    bool q_int8,
+                                    bool transposed_mode)
 {
     int bsz = input.size(0) * input.size(1);
-    T* workspace = (T*)SyclContext::Instance().GetWorkSpace();
-    int out_size = q_int8 ? weight.size(0) : weight.size(1);
+    T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
+    int out_size = (transposed_mode || q_int8) ? weight.size(0) : weight.size(1);
 
     auto options = at::TensorOptions()
                        .dtype(input.options().dtype())
@@ -273,38 +271,230 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                 nullptr,
                                 options,
                                 input.device());
-    auto inp_norm = qkv_unfused_sycl<T>(
-        output, input, weight, q_scale, bias, gamma, beta, epsilon, add_bias, q_int8);
+    auto inp_norm = qkv_unfused_sycl<T>(output,
+                                        input,
+                                        weight,
+                                        q_scale,
+                                        bias,
+                                        gamma,
+                                        beta,
+                                        epsilon,
+                                        add_bias,
+                                        q_int8,
+                                        transposed_mode);
 
     return {output, inp_norm};
 }
 
+template <typename T>
+at::Tensor mlp_unfused_sycl(at::Tensor& output,
+                            at::Tensor& input,
+                            at::Tensor& residual,
+                            at::Tensor& input_bias,
+                            at::Tensor& weight,
+                            at::Tensor& weight1,
+                            at::Tensor& bias,
+                            at::Tensor& gamma,
+                            at::Tensor& beta,
+                            const float epsilon,
+                            bool preLayerNorm,
+                            bool mlp_after_attn,
+                            at::Tensor& q_scale,
+                            at::Tensor& q_scale1,
+                            bool q_int8,
+                            ActivationFuncType act_func_type,
+                            bool transposed_mode)
+{
+    int bsz = input.size(0) * input.size(1);
+    T* inp_norm = (T*)InferenceContext::Instance().GetWorkSpace() + torch::numel(input) +
+                  torch::numel(output);
+    T* intermediate = inp_norm + torch::numel(input);
+
+    if (mlp_after_attn) {
+        launch_fused_residual_ln((T*)inp_norm,
+                                 (const T*)input.data_ptr(),
+                                 (const T*)residual.data_ptr(),
+                                 (const T*)input_bias.data_ptr(),
+                                 (const T*)gamma.data_ptr(),
+                                 (const T*)beta.data_ptr(),
+                                 epsilon,
+                                 bsz,
+                                 input.size(2),
+                                 InferenceContext::Instance().GetCurrentStream());
+    } else {
+        ds_layer_norm_internal(inp_norm, input, gamma, beta, epsilon);
+    }
+    if (q_int8) {
+        throw std::runtime_error("q_int8=true is not supported!");
+    } else {
+        float alpha = (T)1.0;
+        float gemm_beta = (T)0.0;
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            weight.size(1),
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            inp_norm,
+                            (T*)weight.data_ptr(),
+                            intermediate);
+    }
+    if (act_func_type == ActivationFuncType::GELU) {
+        launch_bias_gelu(intermediate,
+                         (T*)bias.data_ptr(),
+                         (transposed_mode || q_int8) ? weight.size(0) : weight.size(1),
+                         bsz,
+                         InferenceContext::Instance().GetCurrentStream());
+    } else if (act_func_type == ActivationFuncType::ReLU) {
+        throw std::runtime_error("act_func_type=relu is not supported!");
+    }
+
+    if (q_int8) {
+        throw std::runtime_error("q_int8=true is not supported!");
+    } else {
+        float alpha = (T)1.0;
+        float gemm_beta = (T)0.0;
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            weight1.size(transposed_mode ? 0 : 1),
+                            bsz,
+                            weight1.size(transposed_mode ? 1 : 0),
+                            alpha,
+                            gemm_beta,
+                            intermediate,
+                            (T*)weight1.data_ptr(),
+                            (T*)output.data_ptr());
+    }
+
+    auto output_stride = c10::TensorType::contiguousStridesOf(input.sizes());
+    return at::from_blob(
+        inp_norm, input.sizes(), output_stride, nullptr, input.options(), input.device());
+}
+
+template <typename T>
+std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
+                                    at::Tensor& residual,
+                                    at::Tensor& input_bias,
+                                    at::Tensor& weight_interm,
+                                    at::Tensor& weight_out,
+                                    at::Tensor& bias,
+                                    at::Tensor& gamma,
+                                    at::Tensor& beta,
+                                    const float epsilon,
+                                    bool preLayerNorm,
+                                    bool mlp_after_attn,
+                                    at::Tensor& q_scale,
+                                    at::Tensor& q_scale1,
+                                    bool q_int8,
+                                    int activation_type,
+                                    bool transposed_mode)
+{
+    auto options = at::TensorOptions()
+                       .dtype(input.options().dtype())
+                       .layout(at::kStrided)
+                       .device(at::kXPU)
+                       .requires_grad(false);
+
+    int out_size = (q_int8 || transposed_mode) ? weight_out.size(0) : weight_out.size(1);
+    auto output_stride =
+        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size});
+    auto output =
+        at::from_blob((T*)InferenceContext::Instance().GetWorkSpace() + torch::numel(input),
+                      {input.size(0), input.size(1), out_size},
+                      output_stride,
+                      nullptr,
+                      options,
+                      input.device());
+    int bsz = input.size(0) * input.size(1);
+
+    auto act_func_type = static_cast<ActivationFuncType>(activation_type);
+    auto res_add = mlp_unfused_sycl<T>(output,
+                                       mlp_after_attn ? input : residual,
+                                       residual,
+                                       input_bias,
+                                       weight_interm,
+                                       weight_out,
+                                       bias,
+                                       gamma,
+                                       beta,
+                                       epsilon,
+                                       preLayerNorm,
+                                       mlp_after_attn,
+                                       q_scale,
+                                       q_scale1,
+                                       q_int8,
+                                       act_func_type,
+                                       transposed_mode);
+
+    return {output, res_add};
+}
+
+template <typename T>
+at::Tensor ds_vector_matmul(at::Tensor& input,
+                            at::Tensor& weight,
+                            bool async_op,
+                            at::Tensor& q_scale,
+                            bool q_int8,
+                            bool transposed_mode)
+{
+    auto options = at::TensorOptions()
+                       .dtype(input.options().dtype())
+                       .layout(at::kStrided)
+                       .device(at::kXPU)
+                       .requires_grad(false);
+    int out_size = q_int8 ? weight.size(0) : weight.size(1);
+    int bsz = input.size(0) * input.size(1);
+
+    T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
+    auto output_stride =
+        c10::TensorType::contiguousStridesOf({input.size(0), input.size(1), out_size});
+    auto output = at::from_blob(workspace,
+                                {input.size(0), input.size(1), out_size},
+                                output_stride,
+                                nullptr,
+                                options,
+                                input.device());
+    if (q_int8) {
+        throw std::runtime_error("q_int8=true is not supported!");
+    } else {
+        float alpha = (T)1.0;
+        float gemm_beta = (T)0.0;
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            weight.size(transposed_mode ? 0 : 1),
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            (T*)input.data_ptr(),
+                            (T*)weight.data_ptr(),
+                            (T*)output.data_ptr());
+    }
+    return output;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-  m.def("layer_norm_bf16", &ds_layer_norm_test<bf16>, "test DeepSpeed LayerNorm with bf16 (SYCL)");
-  m.def("layer_norm_fp16", &ds_layer_norm_test<sycl::half>, "test DeepSpeed LayerNorm  with fp16 (SYCL)");
-  
-  m.def("softmax_fp32", &ds_softmax<float>, "DeepSpeed SoftMax with fp32 (SYCL)");
-  m.def("softmax_bf16", &ds_softmax<bf16>, "DeepSpeed SoftMax with bf16 (SYCL)");
-  m.def("softmax_fp16", &ds_softmax<fp16>, "DeepSpeed SoftMax with fp16 (SYCL)");
-  m.def("residual_add_bias_fp32",
-        &residual_add_bias<float>,
-        "DeepSpeed residual add with fp32 (SYCL)");
-  m.def("residual_add_bias_bf16",
-        &residual_add_bias<bf16>,
-        "DeepSpeed residual add with bf16 (SYCL)");
-  m.def("residual_add_bias_fp16",
-        &residual_add_bias<fp16>,
-        "DeepSpeed residual add with fp16 (SYCL)");
-  m.def("qkv_gemm_bf16", &ds_qkv_gemm<bf16>, "DeepSpeed qkv gemm with bf16 (SYCL)");
-  m.def("qkv_gemm_fp16", &ds_qkv_gemm<fp16>, "DeepSpeed qkv gemm with fp16 (SYCL)");
-  m.def("allocate_workspace_fp32",
-        &allocate_workspace<float>,
-        "DeepSpeed memory allocation for GPT inference with fp32 (SYCL)");
-  m.def("allocate_workspace_bf16",
-        &allocate_workspace<bf16>,
-        "DeepSpeed memory allocation for GPT inference with bf16 (SYCL)");
-  m.def("allocate_workspace_fp16",
-        &allocate_workspace<fp16>,
-        "DeepSpeed memory allocation for GPT inference with fp16 (SYCL)");
+#define DEF_OPS(_name, _dtype)                                                                    \
+    m.def("softmax_" #_name, &ds_softmax<_dtype>, "DeepSpeed SoftMax with " #_name " (SYCL)");    \
+    m.def("layer_norm_" #_name, &ds_layer_norm_test<_dtype>, "DeepSpeed layer norm (SYCL)");      \
+    m.def("qkv_gemm_" #_name, &ds_qkv_gemm<_dtype>, "DeepSpeed qkv gemm with " #_name " (SYCL)"); \
+    m.def("mlp_gemm_" #_name, &ds_mlp_gemm<_dtype>, "DeepSpeed mlp with " #_name " (SYCL)");      \
+    m.def("vector_matmul_" #_name,                                                                \
+          &ds_vector_matmul<_dtype>,                                                              \
+          "DeepSpeed vector-MM with " #_name " (SYCL)");                                          \
+    m.def("residual_add_bias_" #_name,                                                            \
+          &residual_add_bias<_dtype>,                                                             \
+          "DeepSpeed residual add with " #_name " (SYCL)");                                       \
+    m.def("allocate_workspace_" #_name,                                                           \
+          &allocate_workspace<_dtype>,                                                            \
+          "DeepSpeed memory allocation for GPT inference with " #_name " (SYCL)")
+
+    // DEF_OPS(fp32, float);
+    DEF_OPS(fp16, fp16);
+    DEF_OPS(bf16, bf16);
 }
