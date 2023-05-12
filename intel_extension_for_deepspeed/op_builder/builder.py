@@ -42,7 +42,7 @@ class SYCLOpBuilder(OpBuilder):
 
     def cxx_args(self):
         # return ['-g', '-std=c++17', '-fPIC', '-DMKL_ILP64']
-        return ['-O3', '-g', '-std=c++17', '-fPIC', '-DMKL_ILP64', '-fno-strict-aliasing']
+        return ['-fsycl', '-fsycl-targets=spir64_gen', '-O3', '-g', '-std=c++17', '-fPIC', '-DMKL_ILP64', '-fno-strict-aliasing']
 
     def extra_ldflags(self):
         return ['-fPIC', '-Wl,-export-dynamic']
