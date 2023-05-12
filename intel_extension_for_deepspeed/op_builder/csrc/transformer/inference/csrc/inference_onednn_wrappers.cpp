@@ -1,5 +1,6 @@
 #include "inference_onednn_wrappers.hpp"
 #include <oneapi/dnnl/dnnl_sycl.hpp>
+#include <ATen/ATen.h>
 #include "inference_sycl_layers.h"
 
 template <typename T, bool bmm>
@@ -68,6 +69,7 @@ inline int onednn_matmul(sycl::queue handle,
     auto dst_mem = dnnl::memory(dst_md, engine, (void*)dst_ptr);
 
     dnnl::primitive_attr attr;
+    attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     std::unordered_map<int, dnnl::memory> matmul_args;
     if (alpha != 1.0f) {
         float alpha_v(alpha);
@@ -84,10 +86,19 @@ inline int onednn_matmul(sycl::queue handle,
     auto matmul_pd = dnnl::matmul::primitive_desc(engine, src_md, wgt_md, dst_md, attr);
 
     auto matmul_prim = dnnl::matmul(matmul_pd);
+    dnnl::memory::desc scratchpad_md = matmul_pd.scratchpad_desc();
+    auto options = at::TensorOptions()
+                       .dtype(at::kByte)
+                       .layout(at::kStrided)
+                       .device(at::kXPU)
+                       .requires_grad(false);
+    auto scratchpad_tensor = at::empty({(int64_t)scratchpad_md.get_size()}, options);
+    dnnl::memory scratchpad(scratchpad_md, engine, scratchpad_tensor.data_ptr());
 
     matmul_args.insert({DNNL_ARG_SRC, src_mem});
     matmul_args.insert({DNNL_ARG_WEIGHTS, wgt_mem});
     matmul_args.insert({DNNL_ARG_DST, dst_mem});
+    matmul_args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
 
     matmul_prim.execute(stream, matmul_args);
     stream.wait();
