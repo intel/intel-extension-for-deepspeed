@@ -101,6 +101,8 @@ inline int onednn_matmul(sycl::queue handle,
     matmul_args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
 
     matmul_prim.execute(stream, matmul_args);
+
+    return 0;
 }
 
 template <typename T>
