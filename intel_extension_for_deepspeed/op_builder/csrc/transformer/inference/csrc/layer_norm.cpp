@@ -49,7 +49,7 @@ public:
      * cg::tiled_partition<hw_warp_size>(tb); */
 
     // auto tb = sycl::ext::oneapi::experimental::this_group<2>();
-    auto warp = sycl::ext::oneapi::this_sub_group();
+    auto warp = sycl::ext::oneapi::experimental::this_sub_group();
     // TODO: test for pos
     auto tb = pos.get_group();
     // auto tg = pos.get_sub_group();
@@ -295,7 +295,7 @@ public:
     constexpr int T_per_load = ln::granularity / sizeof(T);
 
     auto tb = pos.get_group();
-    auto warp = sycl::ext::oneapi::this_sub_group();
+    auto warp = sycl::ext::oneapi::experimental::this_sub_group();
     // TODO: test for pos
     // auto tb = sycl::ext::oneapi::experimental::this_group<2>();
     // auto tg = pos.get_sub_group();
