@@ -101,7 +101,8 @@ inline int onednn_matmul(sycl::queue handle,
     matmul_args.insert({DNNL_ARG_SCRATCHPAD, scratchpad});
 
     matmul_prim.execute(stream, matmul_args);
-    stream.wait();
+
+    return 0;
 }
 
 template <typename T>
@@ -117,7 +118,7 @@ int onednn_matmul_ex(sycl::queue handle,
                      const T* wgt_ptr,
                      T* dst_ptr)
 {
-    onednn_matmul<T, false>(
+    return onednn_matmul<T, false>(
         handle, trans_src, trans_wgt, m, n, k, alpha, beta, src_ptr, wgt_ptr, dst_ptr, 1);
 }
 
@@ -135,7 +136,7 @@ int onednn_batchgemm(sycl::queue handle,
                      bool trans_wgt,
                      int batch)
 {
-    onednn_matmul<T, true>(
+    return onednn_matmul<T, true>(
         handle, trans_src, trans_wgt, m, n, k, alpha, beta, src_ptr, wgt_ptr, dst_ptr, batch);
 }
 

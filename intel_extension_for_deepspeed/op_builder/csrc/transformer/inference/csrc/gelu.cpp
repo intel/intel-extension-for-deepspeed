@@ -470,6 +470,3 @@ template void launch_bias_residual<half>(half *, half *, half *, half *, half *,
                                          int, int, int, bool, sycl::queue);
 
 template class fused_bias_residual<half>;
-template class fused_bias_residual<bf16>;
-template class fused_bias_residual<float>;
-

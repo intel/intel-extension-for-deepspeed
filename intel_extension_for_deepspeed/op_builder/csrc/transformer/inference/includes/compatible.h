@@ -61,8 +61,7 @@ std::enable_if_t<std::is_trivially_destructible<T>::value && sycl::detail::is_gr
 #else
     // Silence unused variable warning
     [&args...] {}();
-    throw sycl::feature_not_supported(
-        "sycl_ext_oneapi_local_memory extension is not supported on host device",
-        PI_ERROR_INVALID_OPERATION);
+    throw sycl::exception(sycl::errc::feature_not_supported,
+        "sycl_ext_oneapi_local_memory extension is not supported on host device");
 #endif
 }
