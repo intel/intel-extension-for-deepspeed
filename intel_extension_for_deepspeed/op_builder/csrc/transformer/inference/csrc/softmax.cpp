@@ -82,7 +82,7 @@ public:
     void operator() [[sycl::reqd_sub_group_size(WARP_SIZE)]] (sycl::nd_item<1> pos) const
     {
         auto b = sycl::ext::oneapi::experimental::this_group<1>();
-        auto g = sycl::ext::oneapi::this_sub_group();
+        auto g = sycl::ext::oneapi::experimental::this_sub_group();
 
         float2 low_data[MAX_REG_SIZE];
         float2 high_data[MAX_REG_SIZE];
@@ -342,10 +342,10 @@ public:
           mp_size(mp_size),
           reduceWidth(reduceWidth){};
 
-    void operator()(sycl::nd_item<1> pos) const
+    void operator() [[sycl::reqd_sub_group_size(WARP_SIZE)]] (sycl::nd_item<1> pos) const
     {
         auto b = sycl::ext::oneapi::experimental::this_group<1>();
-        auto g = sycl::ext::oneapi::this_sub_group();
+        auto g = sycl::ext::oneapi::experimental::this_sub_group();
 
         float4 data[MAX_REG_SIZE];
 
