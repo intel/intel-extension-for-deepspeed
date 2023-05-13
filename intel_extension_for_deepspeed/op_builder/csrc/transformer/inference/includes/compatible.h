@@ -19,7 +19,7 @@ using namespace cl::sycl;
 constexpr int hw_warp_size = 32;
 constexpr int warpSize = 32;
 
-using bf16 = sycl::ext::oneapi::experimental::bfloat16;
+using bf16 = sycl::ext::oneapi::bfloat16;
 using fp16 = sycl::half;
 
 using float4 = sycl::vec<float, 4>;

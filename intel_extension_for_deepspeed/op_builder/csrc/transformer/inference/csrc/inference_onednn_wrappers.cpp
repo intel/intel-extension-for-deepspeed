@@ -3,30 +3,30 @@
 #include "inference_sycl_layers.h"
 
 // DNNL engine and stream should be permnantly existing and binding to sycl queue
-static dnnl::stream get_dnnl_stream(sycl::queue queue) {
+static std::pair<dnnl::engine, dnnl::stream> get_dnnl_engine_stream(sycl::queue queue) {
   static std::unordered_map<sycl::queue, dnnl::stream> dnnl_streams;
   auto it_stream = dnnl_streams.find(queue);
 
+  static std::unordered_map<sycl::queue, dnnl::engine> dnnl_engines;
   // if hit, we know both engine and queue are preserved
-  if (it_stream != dnnl_engines.end()) {
-    return it_stream->second;
+  if (it_stream != dnnl_streams.end()) {
+    return std::make_pair(dnnl_engines[queue], it_stream->second);
   }
 
-  static std::unordered_map<sycl::queue, dnnl::engine> dnnl_engines;
   auto it = dnnl_engines.find(queue);
 
   dnnl::engine engine;
   if (it != dnnl_engines.end()) {
     engine = it->second;
   } else {
-    engine = dnnl::sycl_interop::make_engine(queue.get_device(), queue.get_context);
+    engine = dnnl::sycl_interop::make_engine(queue.get_device(), queue.get_context());
     dnnl_engines.emplace(std::make_pair(queue, engine));
   }
 
   dnnl::stream stream = dnnl::sycl_interop::make_stream(engine, queue);
   dnnl_streams.emplace(std::make_pair(queue, stream));
 
-  return stream;
+  return std::make_pair(engine, stream);
 }
 
 template <typename T, bool bmm>
@@ -48,7 +48,9 @@ inline int onednn_matmul(sycl::queue handle,
      * wgt, [k, n], n: k: in_features, out_feature
      * dst, [m, n], m: batch, n: out_features
      */
-    dnnl::stream stream = get_dnnl_stream(handle);
+    auto engine_stream = get_dnnl_engine_stream(handle);
+    auto engine = engine_stream.first;
+    auto stream = engine_stream.second;
 
     dnnl::memory::dims src_dims, wgt_dims, dst_dims;
     constexpr auto dnnl_dtype_16 = std::is_same<T, fp16>::value ? dnnl::memory::data_type::f16
