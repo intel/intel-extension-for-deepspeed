@@ -41,14 +41,14 @@ class SYCLOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def cxx_args(self):
-        return ['-fsycl', '-fsycl-targets=spir64_gen', '-v', '-g', '-gdwarf-4', '-std=c++17', '-fPIC', '-DMKL_ILP64']
-        # return ['-O3', '-g', '-std=c++17', '-fPIC', '-DMKL_ILP64', '-fno-strict-aliasing']
+        # return ['-fsycl', '-fsycl-targets=spir64_gen', '-v', '-g', '-gdwarf-4', '-std=c++17', '-fPIC', '-DMKL_ILP64']
+        return ['-fsycl', '-fsycl-targets=spir64_gen', '-g', '-gdwarf-4', '-O3', '-std=c++17', '-fPIC', '-DMKL_ILP64']
 
     def extra_ldflags(self):
         return ['-fPIC', '-Wl,-export-dynamic']
 
     def fixed_aotflags(self):
-        return ['-fsycl', '-v', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs', "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode", '-Xs', "-device pvc"]
+        return ['-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs', "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode", '-Xs', "-device pvc"]
 
     def load(self, verbose=True):
         from deepspeed.git_version_info import installed_ops, torch_info  # noqa: F401
