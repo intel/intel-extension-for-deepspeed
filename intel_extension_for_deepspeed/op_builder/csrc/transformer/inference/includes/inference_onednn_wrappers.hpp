@@ -1,5 +1,6 @@
 #pragma once
-#include "compatible.h"
+#include <oneapi/dnnl/dnnl_sycl.hpp>
+#include <sycl/sycl.hpp>
 
 template <typename T>
 int onednn_matmul_ex(sycl::queue handle,

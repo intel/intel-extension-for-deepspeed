@@ -45,9 +45,9 @@ public:
         auto type_ = c10::DeviceType::XPU;
         c10::impl::VirtualGuardImpl impl(type_);
         auto device_ = c10::Device(type_);
-        c10::Stream dpcpp_stream = impl.getStream(device_);
-        _gen = new oneapi::mkl::rng::philox4x32x10(xpu::get_queue_from_stream(dpcpp_stream), 123);
-        if ((_onemklQ = xpu::get_queue_from_stream(dpcpp_stream), 0) != 0) {
+        c10::Stream stream = impl.getStream(device_);
+        _gen = new oneapi::mkl::rng::philox4x32x10(xpu::get_queue_from_stream(stream), 123);
+        if ((_onemklQ = xpu::get_queue_from_stream(stream), 0) != 0) {
             auto message = std::string("Fail to create onemkl queue.");
             std::cerr << message << std::endl;
             throw std::runtime_error(message);
@@ -66,8 +66,8 @@ public:
         auto type_ = c10::DeviceType::XPU;
         c10::impl::VirtualGuardImpl impl(type_);
         auto device_ = c10::Device(type_);
-        c10::Stream dpcpp_stream = impl.getStream(device_);
-        sycl::free(_workspace, xpu::get_queue_from_stream(dpcpp_stream));
+        c10::Stream stream = impl.getStream(device_);
+        sycl::free(_workspace, xpu::get_queue_from_stream(stream));
     }
 
     static InferenceContext& Instance()
@@ -163,19 +163,20 @@ public:
         auto type_ = c10::DeviceType::XPU;
         c10::impl::VirtualGuardImpl impl(type_);
         auto device_ = c10::Device(type_);
-        c10::Stream dpcpp_stream = impl.getStream(device_);
-        return xpu::get_queue_from_stream(dpcpp_stream);
+        c10::Stream stream = impl.getStream(device_);
+        return xpu::get_queue_from_stream(stream);
     }
 
+    // This could be problematic
     sycl::queue GetNewStream()
     {
         auto type_ = c10::DeviceType::XPU;
         c10::impl::VirtualGuardImpl impl(type_);
         auto device_ = c10::Device(type_);
-        c10::Stream dpcpp_stream = impl.getStream(device_);
+        // c10::Stream dpcpp_stream = impl.getStream(device_);
         c10::Stream stream = impl.getStreamFromGlobalPool(device_, /*isHighPriority=*/false);
 
-        return xpu::get_queue_from_stream(dpcpp_stream);
+        return xpu::get_queue_from_stream(stream);
     }
 
     sycl::queue GetOneMKLQ() { return _onemklQ; }

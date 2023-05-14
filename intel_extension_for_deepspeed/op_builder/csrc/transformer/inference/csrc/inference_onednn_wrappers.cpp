@@ -1,7 +1,33 @@
-#include "inference_onednn_wrappers.hpp"
-#include <oneapi/dnnl/dnnl_sycl.hpp>
 #include <ATen/ATen.h>
+#include "inference_onednn_wrappers.hpp"
 #include "inference_sycl_layers.h"
+
+// DNNL engine and stream should be permnantly existing and binding to sycl queue
+static dnnl::stream get_dnnl_stream(sycl::queue queue) {
+  static std::unordered_map<sycl::queue, dnnl::stream> dnnl_streams;
+  auto it_stream = dnnl_streams.find(queue);
+
+  // if hit, we know both engine and queue are preserved
+  if (it_stream != dnnl_engines.end()) {
+    return it_stream->second;
+  }
+
+  static std::unordered_map<sycl::queue, dnnl::engine> dnnl_engines;
+  auto it = dnnl_engines.find(queue);
+
+  dnnl::engine engine;
+  if (it != dnnl_engines.end()) {
+    engine = it->second;
+  } else {
+    engine = dnnl::sycl_interop::make_engine(queue.get_device(), queue.get_context);
+    dnnl_engines.emplace(std::make_pair(queue, engine));
+  }
+
+  dnnl::stream stream = dnnl::sycl_interop::make_stream(engine, queue);
+  dnnl_streams.emplace(std::make_pair(queue, stream));
+
+  return stream;
+}
 
 template <typename T, bool bmm>
 inline int onednn_matmul(sycl::queue handle,
@@ -22,10 +48,7 @@ inline int onednn_matmul(sycl::queue handle,
      * wgt, [k, n], n: k: in_features, out_feature
      * dst, [m, n], m: batch, n: out_features
      */
-    device dev = handle.get_device();
-    context ctx = handle.get_context();
-    dnnl::engine engine = dnnl::sycl_interop::make_engine(dev, ctx);
-    dnnl::stream stream = dnnl::sycl_interop::make_stream(engine, handle);
+    dnnl::stream stream = get_dnnl_stream(handle);
 
     dnnl::memory::dims src_dims, wgt_dims, dst_dims;
     constexpr auto dnnl_dtype_16 = std::is_same<T, fp16>::value ? dnnl::memory::data_type::f16
