@@ -194,7 +194,7 @@ void launch_fused_ln(T *output, const T *vals, const T *gamma, const T *beta,
   const int groups_launch = (groups_per_block + rows - 1) / groups_per_block;
 
   sycl::range<2> block{(unsigned long)groups_per_block, (size_t)threadsPerGroup};
-  sycl::range<2> grid{(unsigned long)(groups_launch * groups_per_block), (size_t)threadsPerGroup};
+  sycl::range<2> grid{(unsigned long)groups_per_block, (size_t)(threadsPerGroup * groups_launch)};
 
   const int elems_per_step = threadsPerGroup * h_per_step;
   const int external_unRoll =
