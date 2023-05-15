@@ -79,3 +79,19 @@ std::vector<torch::Tensor> feedforward_backward(int bsz,
         batchSize, grad_out_ptr, input_ptr, weights_ptr, grad_w_ptr, grad_b_ptr, q, q, grad_i_ptr);
     return {grad_input, grad_weights, grad_bias};
 }
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("forward_fp32", &feedforward_forward<float>,
+          "FEEDFORWARD forward with fp32 (DPCPP)");
+    m.def("forward_bf16", &feedforward_forward<bf16>,
+          "FEEDFORWARD forward with bf16 (DPCPP)");
+    m.def("forward_fp16", &feedforward_forward<sycl::half>,
+          "FEEDFORWARD forward with fp16 (DPCPP)");
+    m.def("backward_fp32", &feedforward_backward<float>,
+          "FEEDFORWARD backward with fp32 (DPCPP)");
+    m.def("backward_bf16", &feedforward_backward<bf16>,
+          "FEEDFORWARD backward with bf16 (DPCPP)");
+    m.def("backward_fp16", &feedforward_backward<sycl::half>,
+          "FEEDFORWARD backward with fp16 (DPCPP)");
+}

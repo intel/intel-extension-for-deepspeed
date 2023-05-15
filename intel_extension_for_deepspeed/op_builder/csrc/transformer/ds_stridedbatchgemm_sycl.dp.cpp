@@ -93,3 +93,19 @@ std::vector<torch::Tensor> stridedbatchgemm_backward(const int batchSize,
     _sbgemm.Backward(batchSize, grad_c_ptr, matA_ptr, matB_ptr, q, grad_a_ptr, grad_b_ptr);
     return {grad_matA, grad_matB};
 }
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("forward_fp32", &stridedbatchgemm_forward<float>,
+          "STRIDEDBATCHGEMM forward with fp32 (DPCPP)");
+    m.def("forward_bf16", &stridedbatchgemm_forward<bf16>,
+          "STRIDEDBATCHGEMM forward with bf16 (DPCPP)");
+    m.def("forward_fp16", &stridedbatchgemm_forward<sycl::half>,
+          "STRIDEDBATCHGEMM forward with fp16 (DPCPP)");
+    m.def("backward_fp32", &stridedbatchgemm_backward<float>,
+          "STRIDEDBATCHGEMM backward with fp32 (DPCPP)");
+    m.def("backward_bf16", &stridedbatchgemm_backward<bf16>,
+          "STRIDEDBATCHGEMM backward with bf16 (DPCPP)");
+    m.def("backward_fp16", &stridedbatchgemm_backward<sycl::half>,
+          "STRIDEDBATCHGEMM backward with fp16 (DPCPP)");
+}

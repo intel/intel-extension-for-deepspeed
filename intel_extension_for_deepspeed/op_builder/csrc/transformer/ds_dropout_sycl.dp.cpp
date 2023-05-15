@@ -90,3 +90,25 @@ std::vector<torch::Tensor> dropout_backward(float ratio,
         return {output};
     }
 }
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("forward_fp32", &dropout_forward<float>,
+          "DROPOUT forward with fp32 (DPCPP)");
+    m.def("forward_fp16", &dropout_forward<sycl::half>,
+          "DROPOUT forward with fp16 (DPCPP)");
+    m.def("forward_bf16", &dropout_forward<bf16>,
+          "DROPOUT forward with bf16 (DPCPP)");
+    m.def("forward_with_bias_fp32", &dropout_forward_with_bias<float>,
+          "DROPOUT forward with bias with fp32 (DPCPP)");
+    m.def("forward_with_bias_fp16", &dropout_forward_with_bias<sycl::half>,
+          "DROPOUT forward with bias with fp16 (DPCPP)");
+    m.def("forward_with_bias_bf16", &dropout_forward_with_bias<bf16>,
+          "DROPOUT forward with bias with bf16 (DPCPP)");
+    m.def("backward_fp32", &dropout_backward<float>,
+          "DROPOUT backward with fp32 (DPCPP)");
+    m.def("backward_fp16", &dropout_backward<sycl::half>,
+          "DROPOUT backward with fp16 (DPCPP)");
+    m.def("backward_bf16", &dropout_backward<bf16>,
+          "DROPOUT backward with bf16 (DPCPP)");
+}

@@ -120,3 +120,32 @@ std::vector<torch::Tensor> fused_add2(const torch::Tensor& input1,
     launch_fused_add2(output_ptr, input_ptr1, input_ptr2, batch, seq_len, hidden_size, q);
     return {output};
 }
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("fused_add2_fp32", &fused_add2<float>,
+          "Fused add2 with fp32 (DPCPP)");
+    m.def("fused_add2_fp16", &fused_add2<sycl::half>,
+          "Fused add2 with fp16 (DPCPP)");
+    m.def("fused_add2_bf16", &fused_add2<bf16>,
+          "Fused add2 with bf16 (DPCPP)");
+    m.def("transform_0213_fp32", &transform_0213<float>,
+          "transform 0213 with fp32 (DPCPP)");
+    m.def("transform_0213_fp16", &transform_0213<sycl::half>,
+          "transform 0213 with fp16 (DPCPP)");
+    m.def("transform_0213_bf16", &transform_0213<sycl::half>,
+          "transform 0213 with bf16 (DPCPP)"); // simple memory copy
+    m.def("bias_add_transform_0213_fp32", &bias_add_transform_0213<float>,
+          "bias add transform 0213 with fp32 (DPCPP)");
+    m.def("bias_add_transform_0213_fp16", &bias_add_transform_0213<sycl::half>,
+          "bias add transform 0213 with fp16 (DPCPP)");
+    m.def("bias_add_transform_0213_bf16", &bias_add_transform_0213<bf16>,
+          "bias add transform 0213 with bf16 (DPCPP)");
+    m.def("transform4d_0213_fp32", &transform4d_0213<float>,
+          "transform4d 0213 with fp32 (DPCPP)");
+    m.def("transform4d_0213_fp16", &transform4d_0213<sycl::half>,
+          "transform4d 0213 with fp16 (DPCPP)");
+    m.def("transform4d_0213_bf16", &transform4d_0213<sycl::half>,
+          "transform4d 0213 with bf16 (DPCPP)"); // simple memory copy
+
+}

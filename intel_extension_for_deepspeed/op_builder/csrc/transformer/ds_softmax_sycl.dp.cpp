@@ -42,3 +42,19 @@ std::vector<torch::Tensor> softmax_backward(int bsz,
     _softmax.Backward(bsz, out_grad_ptr, input_ptr, q);
     return {out_grad};
 }
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("forward_fp32", &softmax_forward<float>,
+          "SOFTMAX forward with fp32 (DPCPP)");
+    m.def("forward_bf16", &softmax_forward<bf16>,
+          "SOFTMAX forward with bf16 (DPCPP)");
+    m.def("forward_fp16", &softmax_forward<sycl::half>,
+          "SOFTMAX forward with fp16 (DPCPP)");
+    m.def("backward_fp32", &softmax_backward<float>,
+          "SOFTMAX backward with fp32 (DPCPP)");
+    m.def("backward_bf16", &softmax_backward<bf16>,
+          "SOFTMAX backward with bf16 (DPCPP)");
+    m.def("backward_fp16", &softmax_backward<sycl::half>,
+          "SOFTMAX backward with fp16 (DPCPP)");
+}

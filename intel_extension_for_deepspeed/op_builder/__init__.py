@@ -6,3 +6,10 @@ from .transformer import TransformerBuilder
 from .transformer_inference import InferenceBuilder
 from .quantizer import QuantizerBuilder
 from .utils import UtilsBuilder
+from .dropout import DropoutBuilder
+from .feedforward import FeedForwardBuilder
+from .gelu import GeluBuilder
+from .layer_reorder import LayerReorderBuilder
+from .normalize import NormalizeBuilder
+from .softmax import SoftmaxBuilder
+from .stridedbatchgemm import StridedBatchGemmBuilder

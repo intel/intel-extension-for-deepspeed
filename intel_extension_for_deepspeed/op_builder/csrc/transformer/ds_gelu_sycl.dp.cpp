@@ -37,3 +37,19 @@ std::vector<torch::Tensor> gelu_backward(torch::Tensor& d_output,
     _gelu.Backward(bsz_seq, d_output_ptr, input_ptr, bias_ptr, q);
     return {d_output};
 }
+
+PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
+{
+    m.def("forward_fp32", &gelu_forward<float>,
+          "GELU forward with fp32 (DPCPP)");
+    m.def("forward_bf16", &gelu_forward<bf16>,
+          "GELU forward with bf16 (DPCPP)");
+    m.def("forward_fp16", &gelu_forward<half>,
+          "GELU forward with fp16 (DPCPP)");
+    m.def("backward_fp32", &gelu_backward<float>,
+          "GELU backward with fp32 (DPCPP)");
+    m.def("backward_bf16", &gelu_backward<bf16>,
+          "GELU backward with bf16 (DPCPP)");
+    m.def("backward_fp16", &gelu_backward<half>,
+          "GELU backward with fp16 (DPCPP)");
+}
