@@ -433,6 +433,78 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
 }
 
 template <typename T>
+at::Tensor fused_gemm_gelu(at::Tensor& input,
+                           at::Tensor& weight,
+                           at::Tensor& weight_scale,
+                           at::Tensor& bias,
+                           at::Tensor& weight_out,
+                           at::Tensor& weight_out_scale,
+                           bool q_int8,
+                           bool transposed_mode)
+{
+    auto options = at::TensorOptions()
+                       .dtype(input.options().dtype())
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+
+    int intm_dim = (transposed_mode || q_int8) ? weight.size(0) : weight.size(1);
+
+    // auto output = at::from_blob((T*)InferenceContext::Instance().GetWorkSpace() +
+    // torch::numel(input),
+    //                            {input.size(0), input.size(1), out_size},
+    //                            options);
+    // T* intermediate = (T*)input.data_ptr() + torch::numel(input);
+    auto intermediate = at::empty({input.size(0), input.size(1), intm_dim}, options);
+
+    int bsz = input.size(0) * input.size(1);
+
+    float alpha = (T)1.0;
+    float gemm_beta = (T)0.0;
+    if (q_int8) {
+      throw std::runtime_error("q_int8=true is not supported!");
+    } else {
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            intm_dim,
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            (T*)input.data_ptr(),
+                            (T*)weight.data_ptr(),
+                            (T*)intermediate.data_ptr());
+    }
+    launch_bias_gelu((T*)intermediate.data_ptr(),
+                     (T*)bias.data_ptr(),
+                     intm_dim,
+                     bsz,
+                     InferenceContext::Instance().GetCurrentStream());
+
+    int out_size = (transposed_mode || q_int8) ? weight_out.size(0) : weight_out.size(1);
+    auto output = at::empty({input.size(0), input.size(1), out_size}, options);
+    if (q_int8) {
+      throw std::runtime_error("q_int8=true is not supported!");
+    } else {
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            out_size,
+                            intm_dim,
+                            alpha,
+                            gemm_beta,
+                            (T*)intermediate.data_ptr(),
+                            (T*)weight_out.data_ptr(),
+                            (T*)output.data_ptr());
+    }
+    // cudaEventRecord(InferenceContext::Instance().GetCompEvent(2),
+    //                InferenceContext::Instance().GetCurrentStream(true));
+    return output;
+}
+
+template <typename T>
 at::Tensor ds_vector_matmul(at::Tensor& input,
                             at::Tensor& weight,
                             bool async_op,
@@ -490,6 +562,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("residual_add_bias_" #_name,                                                            \
           &residual_add_bias<_dtype>,                                                             \
           "DeepSpeed residual add with " #_name " (SYCL)");                                       \
+    m.def("fused_gemm_gelu_" #_name,                                                              \
+           &fused_gemm_gelu<_dtype>,                                                              \
+           "DeepSpeed mlp with " #_name " (SYCL)");                                               \
     m.def("allocate_workspace_" #_name,                                                           \
           &allocate_workspace<_dtype>,                                                            \
           "DeepSpeed memory allocation for GPT inference with " #_name " (SYCL)")
