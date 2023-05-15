@@ -119,6 +119,74 @@ at::Tensor ds_softmax(at::Tensor& attn_scores,
     return attn_scores_c;
 }
 
+at::Tensor ds_layer_norm(at::Tensor& input, at::Tensor& gamma, at::Tensor& beta, float epsilon)
+{
+    const int rows = input.size(0) * input.size(1);
+    const int elems_per_row = input.size(2);
+    auto output = at::empty_like(input);
+
+    if (input.options().dtype() == torch::kFloat16) {
+        launch_fused_ln((fp16*)output.data_ptr(),
+                        (const fp16*)input.data_ptr(),
+                        (const fp16*)gamma.data_ptr(),
+                        (const fp16*)beta.data_ptr(),
+                        epsilon,
+                        rows,
+                        elems_per_row,
+                        InferenceContext::Instance().GetCurrentStream());
+    } else {
+        launch_fused_ln((float*)output.data_ptr(),
+                        (const float*)input.data_ptr(),
+                        (const float*)gamma.data_ptr(),
+                        (const float*)beta.data_ptr(),
+                        epsilon,
+                        rows,
+                        elems_per_row,
+                        InferenceContext::Instance().GetCurrentStream());
+    }
+
+    return output;
+}
+
+/* Currently only used in unit testing */
+at::Tensor ds_layer_norm_residual(at::Tensor& input,
+                                  at::Tensor& bias,
+                                  at::Tensor& residual,
+                                  at::Tensor& gamma,
+                                  at::Tensor& beta,
+                                  float epsilon)
+{
+    const int rows = input.size(0) * input.size(1);
+    const int elems_per_row = input.size(2);
+    auto output = at::empty_like(input);
+
+    if (input.options().dtype() == torch::kFloat16) {
+        launch_fused_residual_ln((fp16*)output.data_ptr(),
+                                 (const fp16*)input.data_ptr(),
+                                 (const fp16*)residual.data_ptr(),
+                                 (const fp16*)bias.data_ptr(),
+                                 (const fp16*)gamma.data_ptr(),
+                                 (const fp16*)beta.data_ptr(),
+                                 epsilon,
+                                 rows,
+                                 elems_per_row,
+                                 InferenceContext::Instance().GetCurrentStream());
+    } else {
+        launch_fused_residual_ln((float*)output.data_ptr(),
+                                 (const float*)input.data_ptr(),
+                                 (const float*)residual.data_ptr(),
+                                 (const float*)bias.data_ptr(),
+                                 (const float*)gamma.data_ptr(),
+                                 (const float*)beta.data_ptr(),
+                                 epsilon,
+                                 rows,
+                                 elems_per_row,
+                                 InferenceContext::Instance().GetCurrentStream());
+    }
+
+    return output;
+}
+
 template <typename T>
 at::Tensor& residual_add_bias(at::Tensor& hidden_state,
                               at::Tensor& residual,
@@ -357,10 +425,10 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
         onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode,
                             false,
-                            weight1.size(transposed_mode ? 0 : 1),
+                            transposed_mode,
                             bsz,
+                            weight1.size(transposed_mode ? 0 : 1),
                             weight1.size(transposed_mode ? 1 : 0),
                             alpha,
                             gemm_beta,
@@ -433,6 +501,78 @@ std::vector<at::Tensor> ds_mlp_gemm(at::Tensor& input,
 }
 
 template <typename T>
+at::Tensor fused_gemm_gelu(at::Tensor& input,
+                           at::Tensor& weight,
+                           at::Tensor& weight_scale,
+                           at::Tensor& bias,
+                           at::Tensor& weight_out,
+                           at::Tensor& weight_out_scale,
+                           bool q_int8,
+                           bool transposed_mode)
+{
+    auto options = at::TensorOptions()
+                       .dtype(input.options().dtype())
+                       .layout(at::kStrided)
+                       .device(at::kCUDA)
+                       .requires_grad(false);
+
+    int intm_dim = (transposed_mode || q_int8) ? weight.size(0) : weight.size(1);
+
+    // auto output = at::from_blob((T*)InferenceContext::Instance().GetWorkSpace() +
+    // torch::numel(input),
+    //                            {input.size(0), input.size(1), out_size},
+    //                            options);
+    // T* intermediate = (T*)input.data_ptr() + torch::numel(input);
+    auto intermediate = at::empty({input.size(0), input.size(1), intm_dim}, options);
+
+    int bsz = input.size(0) * input.size(1);
+
+    float alpha = (T)1.0;
+    float gemm_beta = (T)0.0;
+    if (q_int8) {
+        throw std::runtime_error("q_int8=true is not supported!");
+    } else {
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            false,
+                            transposed_mode,
+                            bsz,
+                            intm_dim,
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            (T*)input.data_ptr(),
+                            (T*)weight.data_ptr(),
+                            (T*)intermediate.data_ptr());
+    }
+    launch_bias_gelu((T*)intermediate.data_ptr(),
+                     (T*)bias.data_ptr(),
+                     intm_dim,
+                     bsz,
+                     InferenceContext::Instance().GetCurrentStream());
+
+    int out_size = (transposed_mode || q_int8) ? weight_out.size(0) : weight_out.size(1);
+    auto output = at::empty({input.size(0), input.size(1), out_size}, options);
+    if (q_int8) {
+        throw std::runtime_error("q_int8=true is not supported!");
+    } else {
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            false,
+                            transposed_mode,
+                            bsz,
+                            out_size,
+                            intm_dim,
+                            alpha,
+                            gemm_beta,
+                            (T*)intermediate.data_ptr(),
+                            (T*)weight_out.data_ptr(),
+                            (T*)output.data_ptr());
+    }
+    // cudaEventRecord(InferenceContext::Instance().GetCompEvent(2),
+    //                InferenceContext::Instance().GetCurrentStream(true));
+    return output;
+}
+
+template <typename T>
 at::Tensor ds_vector_matmul(at::Tensor& input,
                             at::Tensor& weight,
                             bool async_op,
@@ -463,8 +603,8 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
         onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode,
                             false,
+                            transposed_mode,
                             bsz,
                             weight.size(transposed_mode ? 0 : 1),
                             input.size(2),
@@ -479,6 +619,10 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
+    m.def("layer_norm", &ds_layer_norm, "DeepSpeed layer norm (SYCL)");
+    m.def(
+        "_layer_norm_residual", &ds_layer_norm_residual, "DeepSpeed layer norm + residual (SYCL)");
+
 #define DEF_OPS(_name, _dtype)                                                                    \
     m.def("softmax_" #_name, &ds_softmax<_dtype>, "DeepSpeed SoftMax with " #_name " (SYCL)");    \
     m.def("layer_norm_" #_name, &ds_layer_norm_test<_dtype>, "DeepSpeed layer norm (SYCL)");      \
@@ -490,6 +634,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
     m.def("residual_add_bias_" #_name,                                                            \
           &residual_add_bias<_dtype>,                                                             \
           "DeepSpeed residual add with " #_name " (SYCL)");                                       \
+    m.def("fused_gemm_gelu_" #_name,                                                              \
+          &fused_gemm_gelu<_dtype>,                                                               \
+          "DeepSpeed mlp with " #_name " (SYCL)");                                                \
     m.def("allocate_workspace_" #_name,                                                           \
           &allocate_workspace<_dtype>,                                                            \
           "DeepSpeed memory allocation for GPT inference with " #_name " (SYCL)")
