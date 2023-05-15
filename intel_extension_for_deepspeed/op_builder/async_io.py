@@ -9,7 +9,7 @@ import subprocess
 from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
 
 
-class AsyncIOBuilder(OpBuilder):
+class AsyncIOBuilder(SYCLOpBuilder):
     BUILD_VAR = "DS_BUILD_AIO"
     NAME = "async_io"
 
