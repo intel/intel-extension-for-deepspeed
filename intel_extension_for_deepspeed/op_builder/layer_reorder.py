@@ -16,9 +16,9 @@ class LayerReorderBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/ds_layer_reorder_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/transform_kernels.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/general_kernels.dp.cpp')
+            sycl_kernel_path('csrc/transformer/ds_layer_reorder_sycl.cpp'),
+            sycl_kernel_path('csrc/transformer/transform_kernels.cpp'),
+            sycl_kernel_path('csrc/transformer/general_kernels.cpp')
         ]
 
     def include_paths(self):

@@ -64,7 +64,7 @@ public:
 
     virtual ~SyclContext()
     {
-        _onemklQ = nullptr;
+        // _onemklQ = nullptr;
         free(_gen);
 
         auto type_ = c10::DeviceType::XPU;

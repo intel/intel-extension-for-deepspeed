@@ -16,8 +16,8 @@ class DropoutBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/ds_dropout_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/dropout_kernels.dp.cpp')
+            sycl_kernel_path('csrc/transformer/ds_dropout_sycl.cpp'),
+            sycl_kernel_path('csrc/transformer/dropout_kernels.cpp')
         ]
 
     def include_paths(self):

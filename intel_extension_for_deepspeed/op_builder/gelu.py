@@ -20,8 +20,8 @@ class GeluBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/ds_gelu_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/gelu_kernels.dp.cpp')
+            sycl_kernel_path('csrc/transformer/ds_gelu_sycl.cpp'),
+            sycl_kernel_path('csrc/transformer/gelu_kernels.cpp')
         ]
 
     def include_paths(self):

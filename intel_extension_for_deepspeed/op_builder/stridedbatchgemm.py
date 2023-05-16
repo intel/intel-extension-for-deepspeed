@@ -20,9 +20,9 @@ class StridedBatchGemmBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/ds_stridedbatchgemm_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/onemkl_wrappers.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/onednn_wrappers.dp.cpp')
+            sycl_kernel_path('csrc/transformer/ds_stridedbatchgemm_sycl.cpp'),
+            sycl_kernel_path('csrc/transformer/onemkl_wrappers.cpp'),
+            sycl_kernel_path('csrc/transformer/onednn_wrappers.cpp')
         ]
 
     def include_paths(self):

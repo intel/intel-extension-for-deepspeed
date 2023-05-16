@@ -20,10 +20,10 @@ class FeedForwardBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/ds_feedforward_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/onemkl_wrappers.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/onednn_wrappers.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/general_kernels.dp.cpp')
+            sycl_kernel_path('csrc/transformer/ds_feedforward_sycl.cpp'),
+            sycl_kernel_path('csrc/transformer/onemkl_wrappers.cpp'),
+            sycl_kernel_path('csrc/transformer/onednn_wrappers.cpp'),
+            sycl_kernel_path('csrc/transformer/general_kernels.cpp')
         ]
 
     def include_paths(self):

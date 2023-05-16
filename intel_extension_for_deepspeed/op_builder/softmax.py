@@ -20,8 +20,8 @@ class SoftmaxBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/ds_softmax_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/softmax_kernels.dp.cpp')
+            sycl_kernel_path('csrc/transformer/ds_softmax_sycl.cpp'),
+            sycl_kernel_path('csrc/transformer/softmax_kernels.cpp')
         ]
 
     def include_paths(self):

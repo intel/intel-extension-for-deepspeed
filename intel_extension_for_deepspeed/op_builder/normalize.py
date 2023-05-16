@@ -20,8 +20,8 @@ class NormalizeBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/ds_normalize_sycl.dp.cpp'),
-            sycl_kernel_path('csrc/transformer/normalize_kernels.dp.cpp')
+            sycl_kernel_path('csrc/transformer/ds_normalize_sycl.cpp'),
+            sycl_kernel_path('csrc/transformer/normalize_kernels.cpp')
         ]
 
     def include_paths(self):
