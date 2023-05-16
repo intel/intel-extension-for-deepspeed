@@ -41,8 +41,7 @@ class SYCLOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def cxx_args(self):
-        # return ['-fsycl', '-fsycl-targets=spir64_gen', '-v', '-g', '-gdwarf-4', '-std=c++17', '-fPIC', '-DMKL_ILP64']
-        return ['-fsycl', '-fsycl-targets=spir64_gen', '-g', '-gdwarf-4', '-O3', '-std=c++17', '-fPIC', '-DMKL_ILP64']
+        return ['-fsycl', '-fsycl-targets=spir64_gen', '-g', '-gdwarf-4', '-O3', '-std=c++17', '-fPIC', '-DMKL_ILP64', '-fno-strict-aliasing']
 
     def extra_ldflags(self):
         return ['-fPIC', '-Wl,-export-dynamic']

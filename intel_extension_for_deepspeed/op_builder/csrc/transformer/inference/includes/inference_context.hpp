@@ -173,8 +173,7 @@ public:
         auto type_ = c10::DeviceType::XPU;
         c10::impl::VirtualGuardImpl impl(type_);
         auto device_ = c10::Device(type_);
-        // c10::Stream dpcpp_stream = impl.getStream(device_);
-        c10::Stream stream = impl.getStreamFromGlobalPool(device_, /*isHighPriority=*/false);
+        c10::Stream stream = impl.getStream(device_);
 
         return xpu::get_queue_from_stream(stream);
     }
