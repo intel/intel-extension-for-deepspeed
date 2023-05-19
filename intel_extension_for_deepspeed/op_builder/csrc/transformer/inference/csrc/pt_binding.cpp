@@ -4,6 +4,7 @@
 #include "compatible.h"
 #include "inference_context.hpp"
 #include "inference_onednn_wrappers.hpp"
+#include "inference_onemkl_wrappers.hpp"
 #include "inference_sycl_layers.h"
 
 // NOTE: This activation function type enum should be always in sync
@@ -281,9 +282,9 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
 
-        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode,
-                            false,
+        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+                            oneapi::mkl::transpose::nontrans,
                             bsz,
                             weight.size(1),
                             input.size(2),
@@ -397,9 +398,9 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
-        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            transposed_mode,
-                            false,
+        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+                            oneapi::mkl::transpose::nontrans,
                             bsz,
                             weight.size(1),
                             input.size(2),
@@ -424,9 +425,9 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
-        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            false,
-                            transposed_mode,
+        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+                            oneapi::mkl::transpose::nontrans,
                             bsz,
                             weight1.size(transposed_mode ? 0 : 1),
                             weight1.size(transposed_mode ? 1 : 0),
@@ -532,9 +533,9 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
     if (q_int8) {
         throw std::runtime_error("q_int8=true is not supported!");
     } else {
-        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            false,
-                            transposed_mode,
+        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+                            oneapi::mkl::transpose::nontrans,
                             bsz,
                             intm_dim,
                             input.size(2),
@@ -555,9 +556,9 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
     if (q_int8) {
         throw std::runtime_error("q_int8=true is not supported!");
     } else {
-        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            false,
-                            transposed_mode,
+        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+                            oneapi::mkl::transpose::nontrans,
                             bsz,
                             out_size,
                             intm_dim,
@@ -602,9 +603,9 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
-        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
-                            false,
-                            transposed_mode,
+        onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
+                            oneapi::mkl::transpose::nontrans,
                             bsz,
                             weight.size(transposed_mode ? 0 : 1),
                             input.size(2),
@@ -643,5 +644,5 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 
     // DEF_OPS(fp32, float);
     DEF_OPS(fp16, fp16);
-    DEF_OPS(bf16, bf16);
+    /* DEF_OPS(bf16, bf16); */
 }
