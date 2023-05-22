@@ -281,7 +281,7 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
-
+#ifdef USE_MKL_GEMM
         onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
                             oneapi::mkl::transpose::nontrans,
@@ -293,6 +293,19 @@ at::Tensor qkv_unfused_sycl(at::Tensor& output,
                             workspace,
                             (T*)weight.data_ptr(),
                             (T*)output.data_ptr());
+#else
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            weight.size(1),
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            workspace,
+                            (T*)weight.data_ptr(),
+                            (T*)output.data_ptr());
+#endif
     }
     if (add_bias)
         launch_bias_add((T*)output.data_ptr(),
@@ -398,6 +411,7 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
+#ifdef USE_MKL_GEMM
         onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
                             oneapi::mkl::transpose::nontrans,
@@ -409,6 +423,19 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
                             inp_norm,
                             (T*)weight.data_ptr(),
                             intermediate);
+#else
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            weight.size(1),
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            inp_norm,
+                            (T*)weight.data_ptr(),
+                            intermediate);
+#endif
     }
     if (act_func_type == ActivationFuncType::GELU) {
         launch_bias_gelu(intermediate,
@@ -425,6 +452,7 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
+#ifdef USE_MKL_GEMM
         onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
                             oneapi::mkl::transpose::nontrans,
@@ -436,6 +464,19 @@ at::Tensor mlp_unfused_sycl(at::Tensor& output,
                             intermediate,
                             (T*)weight1.data_ptr(),
                             (T*)output.data_ptr());
+#else
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            weight1.size(transposed_mode ? 0 : 1),
+                            weight1.size(transposed_mode ? 1 : 0),
+                            alpha,
+                            gemm_beta,
+                            intermediate,
+                            (T*)weight1.data_ptr(),
+                            (T*)output.data_ptr());
+#endif
     }
 
     auto output_stride = c10::TensorType::contiguousStridesOf(input.sizes());
@@ -533,6 +574,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
     if (q_int8) {
         throw std::runtime_error("q_int8=true is not supported!");
     } else {
+#ifdef USE_MKL_GEMM
         onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
                             oneapi::mkl::transpose::nontrans,
@@ -544,6 +586,19 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                             (T*)input.data_ptr(),
                             (T*)weight.data_ptr(),
                             (T*)intermediate.data_ptr());
+#else
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            intm_dim,
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            (T*)input.data_ptr(),
+                            (T*)weight.data_ptr(),
+                            (T*)intermediate.data_ptr());
+#endif
     }
     launch_bias_gelu((T*)intermediate.data_ptr(),
                      (T*)bias.data_ptr(),
@@ -556,6 +611,7 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
     if (q_int8) {
         throw std::runtime_error("q_int8=true is not supported!");
     } else {
+#ifdef USE_MKL_GEMM
         onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
                             oneapi::mkl::transpose::nontrans,
@@ -567,9 +623,20 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
                             (T*)intermediate.data_ptr(),
                             (T*)weight_out.data_ptr(),
                             (T*)output.data_ptr());
+#else
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            out_size,
+                            intm_dim,
+                            alpha,
+                            gemm_beta,
+                            (T*)intermediate.data_ptr(),
+                            (T*)weight_out.data_ptr(),
+                            (T*)output.data_ptr());
+#endif
     }
-    // cudaEventRecord(InferenceContext::Instance().GetCompEvent(2),
-    //                InferenceContext::Instance().GetCurrentStream(true));
     return output;
 }
 
@@ -603,6 +670,7 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
     } else {
         float alpha = (T)1.0;
         float gemm_beta = (T)0.0;
+#ifdef USE_MKL_GEMM
         onemkl_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
                             transposed_mode ? oneapi::mkl::transpose::trans : oneapi::mkl::transpose::nontrans,
                             oneapi::mkl::transpose::nontrans,
@@ -614,6 +682,19 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
                             (T*)input.data_ptr(),
                             (T*)weight.data_ptr(),
                             (T*)output.data_ptr());
+#else
+        onednn_matmul_ex<T>(InferenceContext::Instance().GetCurrentStream(),
+                            transposed_mode,
+                            false,
+                            bsz,
+                            weight.size(transposed_mode ? 0 : 1),
+                            input.size(2),
+                            alpha,
+                            gemm_beta,
+                            (T*)input.data_ptr(),
+                            (T*)weight.data_ptr(),
+                            (T*)output.data_ptr());
+#endif
     }
     return output;
 }
@@ -642,7 +723,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &allocate_workspace<_dtype>,                                                            \
           "DeepSpeed memory allocation for GPT inference with " #_name " (SYCL)")
 
-    // DEF_OPS(fp32, float);
+#ifdef USE_MKL_GEMM
+    DEF_OPS(fp32, float);
+#else
+    DEF_OPS(bf16, bf16);
+#endif
     DEF_OPS(fp16, fp16);
-    /* DEF_OPS(bf16, bf16); */
 }
