@@ -8,7 +8,6 @@ import shutil
 from pathlib import Path
 from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
 
-
 class SYCLOpBuilder(OpBuilder):
     def builder(self):
         try:
@@ -41,7 +40,10 @@ class SYCLOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def cxx_args(self):
-        return ['-fsycl', '-fsycl-targets=spir64_gen', '-g', '-gdwarf-4', '-O3', '-std=c++17', '-fPIC', '-DMKL_ILP64', '-fno-strict-aliasing']
+        cxx_flags = ['-fsycl', '-fsycl-targets=spir64_gen', '-g', '-gdwarf-4', '-O3', '-std=c++17', '-fPIC', '-DMKL_ILP64', '-fno-strict-aliasing']
+        if os.environ.get('USE_MKL_GEMM'):
+            cxx_flags.append('-DUSE_MKL_GEMM')
+        return cxx_flags
 
     def extra_ldflags(self):
         return ['-fPIC', '-Wl,-export-dynamic']
