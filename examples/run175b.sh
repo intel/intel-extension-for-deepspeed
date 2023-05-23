@@ -1,4 +1,4 @@
-echo "!!!please use generate_hostfile.sh to set hostfile for 18 nodes before training"
+echo "!!!please use generate_hostfile.sh to set hostfile for enough nodes before training"
 export WORLD_SIZE=216
 export MICRO_BATCH=1
 export NLAYERS=96
