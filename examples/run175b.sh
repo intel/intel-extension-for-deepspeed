@@ -13,5 +13,5 @@ export GLOBAL_BATCH=$(( $WORLD_SIZE * $MICRO_BATCH / $TP / $PP ))
 
 export DS_CONFIG=${PWD}/"ds_stage${ZERO_STAGE}_mb${MICRO_BATCH}_gb${GLOBAL_BATCH}_pp${PP}_tp${TP}_bf16.json"
 
-bash ${intel-extension-for-deepspeed}/examples/generate_config.sh
-bash ${intel-extension-for-deepspeed}/examples/gpt.sh
+bash $LLM_DK_DIR/intel-extension-for-deepspeed/examples/generate_config.sh
+bash $LLM_DK_DIR/intel-extension-for-deepspeed/examples/gpt.sh
