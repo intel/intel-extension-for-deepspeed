@@ -8,6 +8,7 @@ using namespace cl::sycl;
 #error "Unsupported compiler"
 #endif
 #include "custom_sycl_layers.hpp"
+#include "conversion_utils.h"
 /*
   Fused bias add, residual (elementwise) add, and normalization layer.
 
@@ -40,13 +41,10 @@ void fused_bias_residual_layer_norm(float* vals,
     int iteration_stride = item_ct1.get_local_range(2);
     int iterations = row_stride / iteration_stride;
 
-    // sycl::group<3> b = item_ct1.get_group();
-    // cg::thread_block_tile<MAX_SG_NUM> g = cg::tiled_partition<MAX_SG_NUM>(b);
     sub_group sg = item_ct1.get_sub_group();
 
     int row = item_ct1.get_group(2);
     int id = item_ct1.get_local_id(2);
-    // int gid = id / MAX_SG_NUM;
     int gid = id / MAX_SG_NUM;
 
     float vals_arr[NORM_REG];
@@ -67,7 +65,6 @@ void fused_bias_residual_layer_norm(float* vals,
         iterations++;
     }
 
-    // for (int i = 1; i < 32; i *= 2) { sum += g.shfl_down(sum, i); }
     for (int i = 1; i < MAX_SG_NUM; i *= 2) { sum += sg.shuffle_down(sum, i); }
 
     if (sg.get_local_id() == 0) shr[gid] = sum;
@@ -82,11 +79,9 @@ void fused_bias_residual_layer_norm(float* vals,
 
     for (int i = 1; i < (iteration_stride >> 5); i *= 2) { sum += sg.shuffle_down(sum, i); }
 
-    // sum = g.shfl(sum, 0);
     sum = sg.shuffle(sum, 0);
     float mean = sum / row_stride;
-    // if (training)
-    //     if (g.thread_rank() == 0) means[row] = mean;
+
     if constexpr (is_mean) {
         if (training)
             if (sg.get_local_id() == 0) means[row] = mean;
@@ -97,10 +92,8 @@ void fused_bias_residual_layer_norm(float* vals,
         variance += vals_arr[i] * vals_arr[i];
     }
 
-    // for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
     for (int i = 1; i < MAX_SG_NUM; i *= 2) { variance += sg.shuffle_down(variance, i); }
 
-    // if (g.thread_rank() == 0) shr[gid] = variance;
     if (sg.get_local_id() == 0) shr[gid] = variance;
 
     item_ct1.barrier();
@@ -153,36 +146,26 @@ void fused_bias_residual_layer_norm(bf16* vals,
     int iteration_stride = item_ct1.get_local_range(2);
     int iterations = row_stride / iteration_stride;
 
-    // sycl::group<3> b = item_ct1.get_group();
-    // cg::thread_block_tile<MAX_SG_NUM> g = cg::tiled_partition<MAX_SG_NUM>(b);
     sub_group sg = item_ct1.get_sub_group();
 
     int row = item_ct1.get_group(2);
     int id = item_ct1.get_local_id(2);
-    // int gid = id / MAX_SG_NUM;
     int gid = id / MAX_SG_NUM;
 
     float vals_arr[NORM_REG];
 
-    ushort* vals_cast = reinterpret_cast<ushort*>(vals);
-    const ushort* residual_cast = reinterpret_cast<const ushort*>(residual);
-    const ushort* gamma_cast = reinterpret_cast<const ushort*>(gamma);
-    const ushort* beta_cast = reinterpret_cast<const ushort*>(beta);
-    ushort* vars_cast = reinterpret_cast<ushort*>(vars);
-    ushort* means_cast = reinterpret_cast<ushort*>(means);
-
-    residual_cast += (row * row_stride);
-    vals_cast += (row * row_stride);
+    residual += (row * row_stride);
+    vals += (row * row_stride);
 
     float sum = 0.f;
     int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        vals_arr[i] = float(residual_cast[i * iteration_stride + id]);
+        vals_arr[i] = conversion::to<float>(residual[i * iteration_stride + id]);
         sum += vals_arr[i];
     }
     if (high_index < row_stride) {
-        vals_arr[iterations] = float(residual_cast[high_index]);
+        vals_arr[iterations] = conversion::to<float>(residual[high_index]);
         sum += vals_arr[iterations];
         iterations++;
     }
@@ -193,26 +176,20 @@ void fused_bias_residual_layer_norm(bf16* vals,
 
     item_ct1.barrier();
 
-    // if (g.thread_rank() < (iteration_stride >> 5)) sum = shr[g.thread_rank()];
     if (sg.get_local_id() < (iteration_stride >> 5)) sum = shr[sg.get_local_id()];
 
 #if !defined(__STOCHASTIC_MODE__)
-
     item_ct1.barrier();
 #endif
 
-    // for (int i = 1; i < (iteration_stride >> 5); i *= 2) { sum +=
-    // g.shfl_down(sum, i); }
     for (int i = 1; i < (iteration_stride >> 5); i *= 2) { sum += sg.shuffle_down(sum, i); }
 
-    // sum = g.shfl(sum, 0);
     sum = sg.shuffle(sum, 0);
     float mean = sum / row_stride;
-    // if (training)
-    //     if (g.thread_rank() == 0) means[row] = mean;
+
     if constexpr (is_mean) {
         if (training)
-            if (sg.get_local_id() == 0) means_cast[row] = bf16(mean);
+            if (sg.get_local_id() == 0) means[row] = conversion::to<bf16>(mean);
     }
     float variance = 0.f;
     for (int i = 0; i < iterations; i++) {
@@ -220,16 +197,12 @@ void fused_bias_residual_layer_norm(bf16* vals,
         variance += vals_arr[i] * vals_arr[i];
     }
 
-    // for (int i = 1; i < 32; i *= 2) { variance += g.shfl_down(variance, i); }
     for (int i = 1; i < MAX_SG_NUM; i *= 2) { variance += sg.shuffle_down(variance, i); }
 
-    // if (g.thread_rank() == 0) shr[gid] = variance;
     if (sg.get_local_id() == 0) shr[gid] = variance;
 
     item_ct1.barrier();
 
-    // if (g.thread_rank() < (iteration_stride >> 5)) variance =
-    // shr[g.thread_rank()];
     if (sg.get_local_id() < (iteration_stride >> 5)) variance = shr[sg.get_local_id()];
 
 #ifndef __STOCHASTIC_MODE__
@@ -237,32 +210,27 @@ void fused_bias_residual_layer_norm(bf16* vals,
     item_ct1.barrier();
 #endif
 
-    // for (int i = 1; i < (iteration_stride >> 5); i *= 2) { variance +=
-    // g.shfl_down(variance, i); }
     for (int i = 1; i < (iteration_stride >> 5); i *= 2) {
         variance += sg.shuffle_down(variance, i);
     }
-    // variance = g.shfl(variance, 0);
     variance = sg.shuffle(variance, 0);
     variance /= row_stride;
     variance += epsilon;
-    // if (training)
-    //     if (g.thread_rank() == 0) vars[row] = variance;
     if (training)
-        if (sg.get_local_id() == 0) vars_cast[row] = bf16(variance);
+        if (sg.get_local_id() == 0) vars[row] = conversion::to<bf16>(variance);
 
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++) {
         vals_arr[i] = vals_arr[i] * rsqrt(variance);
-        vals_arr[i] = vals_arr[i] * float(gamma_cast[i * iteration_stride + id]) +
-                      float(beta_cast[i * iteration_stride + id]);
-        vals_cast[i * iteration_stride + id] = bf16(vals_arr[i]);
+        vals_arr[i] = vals_arr[i] * conversion::to<float>(gamma[i * iteration_stride + id]) +
+                      conversion::to<float>(beta[i * iteration_stride + id]);
+        vals[i * iteration_stride + id] = conversion::to<bf16>(vals_arr[i]);
     }
     if ((high_index) < row_stride) {
         vals_arr[iterations] = vals_arr[iterations] * rsqrt(variance);
-        vals_arr[iterations] = vals_arr[iterations] * float(gamma[high_index]) +
-                               float(beta[high_index]);
-        vals_cast[high_index] = bf16(vals_arr[iterations]);
+        vals_arr[iterations] = vals_arr[iterations] * conversion::to<float>(gamma[high_index]) +
+                               conversion::to<float>(beta[high_index]);
+        vals[high_index] = conversion::to<bf16>(vals_arr[iterations]);
     }
 }
 
@@ -796,49 +764,32 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
                               float* betta_buffer,
                               float* gamma_buffer)
 {
-    // group<3> b = item_ct1.get_group();
-    // cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
     sub_group sg = item_ct1.get_sub_group();
 
     int idx = item_ct1.get_local_range(2) * item_ct1.get_group(2) + item_ct1.get_local_id(2);
     int offset = item_ct1.get_local_id(1) * width + idx;
     int y_stride = width * TILE_DIM;
 
-    const ushort* out_grad_cast = reinterpret_cast<const ushort*>(out_grad);
-    const ushort* vals_hat_cast = reinterpret_cast<const ushort*>(vals_hat);
-    const ushort* gamma_cast = reinterpret_cast<const ushort*>(gamma);
-    const ushort* betta_cast = reinterpret_cast<const ushort*>(betta);
-    ushort* gamma_grad_cast = reinterpret_cast<ushort*>(gamma_grad);
-    ushort* betta_grad_cast = reinterpret_cast<ushort*>(betta_grad);
+    float betta_reg = (invertible ? conversion::to<float>(betta[idx]) : 0.0f);
+    float gamma_reg = conversion::to<float>(gamma[idx]);
 
-    float betta_reg = (invertible ? float(betta_cast[idx]) : 0.0f);
-    float gamma_reg = float(gamma_cast[idx]);
-
-    // Loop across matrix height
     float betta_tmp = 0;
     float gamma_tmp = 0;
     for (int r = item_ct1.get_local_id(1); r < rows; r += TILE_DIM) {
-        float grad = float(out_grad_cast[offset]);
-        float val = (invertible ? (float(vals_hat_cast[offset]) - betta_reg) / gamma_reg
-                                : float(vals_hat_cast[offset]));
+        float grad = conversion::to<float>(out_grad[offset]);
+        float val = (invertible ? (conversion::to<float>(vals_hat[offset]) - betta_reg) / gamma_reg
+                                : conversion::to<float>(vals_hat[offset]));
         betta_tmp += grad;
         gamma_tmp += (val * grad);
 
         offset += y_stride;
     }
 
-    // betta_buffer[item_ct1.get_local_id(2)][item_ct1.get_local_id(1)] =
-    // betta_tmp; gamma_buffer[item_ct1.get_local_id(2)][item_ct1.get_local_id(1)]
-    // = gamma_tmp;
     betta_buffer[item_ct1.get_local_id(2) * MAX_SG_NUM1 + item_ct1.get_local_id(1)] = betta_tmp;
     gamma_buffer[item_ct1.get_local_id(2) * MAX_SG_NUM1 + item_ct1.get_local_id(1)] = gamma_tmp;
 
     item_ct1.barrier();
 
-    // Sum the shared buffer.
-    // float s1 =
-    // betta_buffer[item_ct1.get_local_id(1)][item_ct1.get_local_id(2)]; float s2
-    // = gamma_buffer[item_ct1.get_local_id(1)][item_ct1.get_local_id(2)];
     float s1 = betta_buffer[item_ct1.get_local_id(1) * MAX_SG_NUM1 + item_ct1.get_local_id(2)];
     float s2 = gamma_buffer[item_ct1.get_local_id(1) * MAX_SG_NUM1 + item_ct1.get_local_id(2)];
 
@@ -847,10 +798,6 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
     item_ct1.barrier();
 #endif
 
-    // for (int i = 1; i < TILE_DIM; i <<= 1) {
-    //     s1 += g.shfl_down(s1, i);
-    //     s2 += g.shfl_down(s2, i);
-    // }
     for (int i = 1; i < TILE_DIM; i <<= 1) {
         s1 += sg.shuffle_down(s1, i);
         s2 += sg.shuffle_down(s2, i);
@@ -858,8 +805,8 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
 
     if (item_ct1.get_local_id(2) == 0) {
         int pos = item_ct1.get_group(2) * TILE_DIM + item_ct1.get_local_id(1);
-        betta_grad_cast[pos] = bf16(s1);
-        gamma_grad_cast[pos] = bf16(s2);
+        betta_grad[pos] = conversion::to<bf16>(s1);
+        gamma_grad[pos] = conversion::to<bf16>(s2);
     }
 }
 
@@ -947,8 +894,6 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
                               float* betta_buffer,
                               float* gamma_buffer)
 {
-    // group<3> b = item_ct1.get_group();
-    // cg::thread_block_tile<TILE_DIM> g = cg::tiled_partition<TILE_DIM>(b);
     sub_group sg = item_ct1.get_sub_group();
 
     int idx = item_ct1.get_local_range(2) * item_ct1.get_group(2) + item_ct1.get_local_id(2);
@@ -956,21 +901,13 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
     int y_stride = width * TILE_DIM;
 
     int pos = item_ct1.get_group(2) * TILE_DIM + item_ct1.get_local_id(1);
-    // Loop across matrix height
-
-    const ushort* out_grad_cast = reinterpret_cast<const ushort*>(out_grad);
-    const ushort* X_data_cast = reinterpret_cast<const ushort*>(X_data);
-    const ushort* vars_cast = reinterpret_cast<const ushort*>(vars);
-    const ushort* means_cast = reinterpret_cast<const ushort*>(means);
-    ushort* gamma_grad_cast = reinterpret_cast<ushort*>(gamma_grad);
-    ushort* betta_grad_cast = reinterpret_cast<ushort*>(betta_grad);
 
     float betta_tmp = 0;
     float gamma_tmp = 0;
     for (int r = item_ct1.get_local_id(1); r < rows; r += TILE_DIM) {
-        float grad = float(out_grad_cast[offset]);
-        float val = float(X_data_cast[offset]);
-        val = (val - float(means_cast[r])) * rsqrt(float(vars_cast[r]));
+        float grad = conversion::to<float>(out_grad[offset]);
+        float val = conversion::to<float>(X_data[offset]);
+        val = (val - conversion::to<float>(means[r])) * rsqrt(conversion::to<float>(vars[r]));
         betta_tmp += grad;
         gamma_tmp += (val * grad);
 
@@ -1001,8 +938,8 @@ void LayerNormBackward1<bf16>(const bf16* out_grad,
     }
 
     if (item_ct1.get_local_id(2) == 0) {
-        betta_grad_cast[pos] = bf16(s1);
-        gamma_grad_cast[pos] = bf16(s2);
+        betta_grad[pos] = conversion::to<bf16>(s1);
+        gamma_grad[pos] = conversion::to<bf16>(s2);
     }
 }
 /*
@@ -1156,8 +1093,6 @@ void LayerNormBackward2(const bf16* out_grad,
     int iteration_stride = item_ct1.get_local_range(2);
     int iterations = row_stride / iteration_stride;
 
-    // group<3> b = item_ct1.get_group();
-    // cg::thread_block_tile<MAX_SG_NUM> g = cg::tiled_partition<MAX_SG_NUM>(b);
     sub_group sg = item_ct1.get_sub_group();
 
     int row = item_ct1.get_group(2);
@@ -1165,44 +1100,36 @@ void LayerNormBackward2(const bf16* out_grad,
     int wid = id / MAX_SG_NUM;
     int warp_num = (THREADS < row_stride ? THREADS : row_stride) / MAX_SG_NUM;
 
-    const ushort* out_grad_cast = reinterpret_cast<const ushort*>(out_grad);
-    const ushort* out_grad_add_cast = reinterpret_cast<const ushort*>(out_grad_add);
-    const ushort* vals_hat_cast = reinterpret_cast<const ushort*>(vals_hat);
-    const ushort* gamma_cast = reinterpret_cast<const ushort*>(gamma);
-    const ushort* betta_cast = reinterpret_cast<const ushort*>(betta);
-    const ushort* vars_cast = reinterpret_cast<const ushort*>(vars);
-    ushort* inp_grad_cast = reinterpret_cast<ushort*>(inp_grad);
-
-    out_grad_cast += (row * row_stride);
-    if constexpr (is_fuseadd) { out_grad_add_cast += (row * row_stride); }
-    vals_hat_cast += (row * row_stride);
-    inp_grad_cast += (row * row_stride);
+    out_grad += (row * row_stride);
+    if constexpr (is_fuseadd) { out_grad_add += (row * row_stride); }
+    vals_hat += (row * row_stride);
+    inp_grad += (row * row_stride);
 
     float vals_arr[NORM_REG];
     float vals_hat_arr[NORM_REG];
     int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        float gamma_reg = float(gamma_cast[i * iteration_stride + id]);
-        vals_arr[i] = float(out_grad_cast[i * iteration_stride + id]);
+        float gamma_reg = conversion::to<float>(gamma[i * iteration_stride + id]);
+        vals_arr[i] = conversion::to<float>(out_grad[i * iteration_stride + id]);
         vals_arr[i] *= gamma_reg;
-        vals_hat_arr[i] = (invertible ? (float(vals_hat_cast[i * iteration_stride + id]) -
-                                         float(betta_cast[i * iteration_stride + id])) /
+        vals_hat_arr[i] = (invertible ? (conversion::to<float>(vals_hat[i * iteration_stride + id]) -
+                                         conversion::to<float>(betta[i * iteration_stride + id])) /
                                             gamma_reg
-                                      : float(vals_hat_cast[i * iteration_stride + id]));
+                                      : conversion::to<float>(vals_hat[i * iteration_stride + id]));
     }
     if ((high_index) < row_stride) {
-        float gamma_reg = float(gamma_cast[high_index]);
-        vals_arr[iterations] = float(out_grad_cast[high_index]);
+        float gamma_reg = conversion::to<float>(gamma[high_index]);
+        vals_arr[iterations] = conversion::to<float>(out_grad[high_index]);
         vals_arr[iterations] *= gamma_reg;
-        vals_hat_arr[iterations] = (invertible ? (float(vals_hat_cast[high_index]) -
-                                                  float(betta_cast[high_index])) /
+        vals_hat_arr[iterations] = (invertible ? (conversion::to<float>(vals_hat[high_index]) -
+                                                  conversion::to<float>(betta[high_index])) /
                                                      gamma_reg
-                                               : float(vals_hat_cast[high_index]));
+                                               : conversion::to<float>(vals_hat[high_index]));
         iterations++;
     }
 
-    float var_reg = float(vars_cast[row]);
+    float var_reg = conversion::to<float>(vars[row]);
 
     float sum = 0;
     for (int i = 0; i < iterations; i++) {
@@ -1262,17 +1189,17 @@ void LayerNormBackward2(const bf16* out_grad,
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[i * iteration_stride + id] = bf16(
-                (vals_arr[i] - sum) + float(out_grad_add_cast[i * iteration_stride + id]));
+            inp_grad[i * iteration_stride + id] = conversion::to<bf16>(
+                (vals_arr[i] - sum) + conversion::to<float>(out_grad_add[i * iteration_stride + id]));
         } else {
-            inp_grad_cast[i * iteration_stride + id] = bf16((vals_arr[i] - sum));
+            inp_grad[i * iteration_stride + id] = conversion::to<bf16>((vals_arr[i] - sum));
         }
     if ((high_index) < row_stride)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[high_index] = bf16(
-                (vals_arr[iterations] - sum) + float(out_grad_add_cast[high_index]));
+            inp_grad[high_index] = conversion::to<bf16>(
+                (vals_arr[iterations] - sum) + conversion::to<float>(out_grad_add[high_index]));
         } else {
-            inp_grad_cast[high_index] = bf16((vals_arr[iterations] - sum));
+            inp_grad[high_index] = conversion::to<bf16>((vals_arr[iterations] - sum));
         }
 }
 
@@ -1758,50 +1685,40 @@ void LayerNormBackward2(const bf16* out_grad,
     int iteration_stride = item_ct1.get_local_range(2);
     int iterations = row_stride / iteration_stride;
 
-    // group<3> b = item_ct1.get_group();
-    // cg::thread_block_tile<MAX_SG_NUM> g = cg::tiled_partition<MAX_SG_NUM>(b);
     sub_group sg = item_ct1.get_sub_group();
-
-    const ushort* out_grad_cast = reinterpret_cast<const ushort*>(out_grad);
-    const ushort* out_grad_add_cast = reinterpret_cast<const ushort*>(out_grad_add);
-    const ushort* X_vals_cast = reinterpret_cast<const ushort*>(X_vals);
-    const ushort* gamma_cast = reinterpret_cast<const ushort*>(gamma);
-    const ushort* vars_cast = reinterpret_cast<const ushort*>(vars);
-    const ushort* means_cast = reinterpret_cast<const ushort*>(means);
-    ushort* inp_grad_cast = reinterpret_cast<ushort*>(inp_grad);
 
     int row = item_ct1.get_group(2);
     int id = item_ct1.get_local_id(2);
     int wid = id / MAX_SG_NUM;
     int warp_num = (THREADS < row_stride ? THREADS : row_stride) / MAX_SG_NUM;
 
-    out_grad_cast += (row * row_stride);
-    if constexpr (is_fuseadd) { out_grad_add_cast += (row * row_stride); }
-    X_vals_cast += (row * row_stride);
-    inp_grad_cast += (row * row_stride);
+    out_grad += (row * row_stride);
+    if constexpr (is_fuseadd) { out_grad_add += (row * row_stride); }
+    X_vals += (row * row_stride);
+    inp_grad += (row * row_stride);
 
     float vals_arr[NORM_REG];
     int high_index = iterations * iteration_stride + id;
 #pragma unroll
     for (int i = 0; i < iterations; i++) {
-        float gamma_reg = float(gamma_cast[i * iteration_stride + id]);
-        vals_arr[i] = float(out_grad_cast[i * iteration_stride + id]);
+        float gamma_reg = conversion::to<float>(gamma[i * iteration_stride + id]);
+        vals_arr[i] = conversion::to<float>(out_grad[i * iteration_stride + id]);
         vals_arr[i] *= gamma_reg;
     }
     if ((high_index) < row_stride) {
-        float gamma_reg = float(gamma_cast[high_index]);
-        vals_arr[iterations] = float(out_grad_cast[high_index]);
+        float gamma_reg = conversion::to<float>(gamma[high_index]);
+        vals_arr[iterations] = conversion::to<float>(out_grad[high_index]);
         vals_arr[iterations] *= gamma_reg;
         iterations++;
     }
 
-    float var_reg = float(vars_cast[row]);
-    float mean_reg = float(means_cast[row]);
+    float var_reg = conversion::to<float>(vars[row]);
+    float mean_reg = conversion::to<float>(means[row]);
 
     float sum = 0;
     float xu[NORM_REG];
     for (int i = 0; i < iterations; i++) {
-        xu[i] = (float(X_vals_cast[i * iteration_stride + id]) - mean_reg);
+        xu[i] = (conversion::to<float>(X_vals[i * iteration_stride + id]) - mean_reg);
         sum += vals_arr[i] * xu[i];
         vals_arr[i] *= rsqrt(var_reg);
     }
@@ -1856,17 +1773,17 @@ void LayerNormBackward2(const bf16* out_grad,
     iterations = row_stride / iteration_stride;
     for (int i = 0; i < iterations; i++)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[i * iteration_stride + id] = bf16(
-                (vals_arr[i] - sum) + float(out_grad_add_cast[i * iteration_stride + id]));
+            inp_grad[i * iteration_stride + id] = conversion::to<bf16>(
+                (vals_arr[i] - sum) + conversion::to<float>(out_grad_add[i * iteration_stride + id]));
         } else {
-            inp_grad_cast[i * iteration_stride + id] = bf16(vals_arr[i] - sum);
+            inp_grad[i * iteration_stride + id] = conversion::to<bf16>(vals_arr[i] - sum);
         }
     if ((high_index) < row_stride)
         if constexpr (is_fuseadd) {
-            inp_grad_cast[high_index] = bf16(
-                (vals_arr[iterations] - sum) + float(out_grad_add_cast[high_index]));
+            inp_grad[high_index] = conversion::to<bf16>(
+                (vals_arr[iterations] - sum) + conversion::to<float>(out_grad_add[high_index]));
         } else {
-            inp_grad_cast[high_index] = bf16(vals_arr[iterations] - sum);
+            inp_grad[high_index] = conversion::to<bf16>(vals_arr[iterations] - sum);
         }
 }
 
