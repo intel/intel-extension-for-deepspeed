@@ -3,11 +3,11 @@
 VOCAB_FILE=dataset/gpt2-vocab.json
 MERGE_FILE=dataset/gpt2-merges.txt
 DATA_PATH=dataset/BookCorpusDataset_text_document
-DS_CONFIG=${DS_CONFIG:-${PWD}/examples/intel/"ds_stage_${ZERO_STAGE}_mb${MICRO_BATCH}_gb${GLOBAL_BATCH}_bf16.json"}
+DS_CONFIG=${DS_CONFIG:-${PWD}/"ds_stage_${ZERO_STAGE}_mb${MICRO_BATCH}_gb${GLOBAL_BATCH}_bf16.json"}
 
 # Hostfile path
-hostfile_deepspeed=${PWD}/examples/intel/hostfile_deepspeed
-hostfile_mpich=${PWD}/examples/intel/hostfile_mpich
+hostfile_deepspeed=$LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_deepspeed
+hostfile_mpich=$LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_mpich
 
 # Disabling tensor/pipeline parallelism
 TP=${TP:-1}
