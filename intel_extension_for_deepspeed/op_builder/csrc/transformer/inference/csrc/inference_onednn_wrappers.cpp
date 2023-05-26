@@ -186,6 +186,18 @@ template int onednn_matmul_ex(sycl::queue handle,
                               int k,
                               const float alpha,
                               const float beta,
+                              const float* src_ptr,
+                              const float* wgt_ptr,
+                              float* dst_ptr);
+
+template int onednn_matmul_ex(sycl::queue handle,
+                              bool trans_src,
+                              bool trans_wgt,
+                              int m,
+                              int n,
+                              int k,
+                              const float alpha,
+                              const float beta,
                               const bf16* src_ptr,
                               const bf16* wgt_ptr,
                               bf16* dst_ptr);
@@ -201,6 +213,19 @@ template int onednn_matmul_ex(sycl::queue handle,
                               const fp16* src_ptr,
                               const fp16* wgt_ptr,
                               fp16* dst_ptr);
+
+template int onednn_batchgemm(sycl::queue handle,
+                              int m,
+                              int n,
+                              int k,
+                              const float alpha,
+                              const float beta,
+                              const float* src_ptr,
+                              const float* wgt_ptr,
+                              float* dst_ptr,
+                              bool trans_src,
+                              bool trans_wgt,
+                              int batch);
 
 template int onednn_batchgemm(sycl::queue handle,
                               int m,

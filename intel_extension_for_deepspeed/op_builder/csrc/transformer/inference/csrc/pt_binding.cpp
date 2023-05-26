@@ -328,10 +328,6 @@ std::vector<at::Tensor> ds_qkv_gemm(at::Tensor& input,
                                     at::Tensor& beta,
                                     const float epsilon,
                                     bool add_bias,
-                                    unsigned num_layers,
-                                    bool external_cache,
-                                    unsigned mp_size,
-                                    unsigned rank,
                                     bool q_int8,
                                     bool transposed_mode)
 {
@@ -723,10 +719,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
           &allocate_workspace<_dtype>,                                                            \
           "DeepSpeed memory allocation for GPT inference with " #_name " (SYCL)")
 
-#ifdef USE_MKL_GEMM
     DEF_OPS(fp32, float);
-#else
+    DEF_OPS(fp16, fp16);
+#ifndef USE_MKL_GEMM
     DEF_OPS(bf16, bf16);
 #endif
-    DEF_OPS(fp16, fp16);
 }

@@ -78,8 +78,8 @@ public:
 #pragma unRoll
     for (int i = 0; i < unRoll; i++) {
       T *iteration_buffer = local_buffer + i * T_per_load;
-      T residual_buffer[T_per_load];
-      T bias_buffer[T_per_load];
+      //T residual_buffer[T_per_load];
+      //T bias_buffer[T_per_load];
 
       mem_access::load_global<ln::granularity>(
           iteration_buffer, input_base + i * stride,
@@ -114,8 +114,8 @@ public:
     const float variance = mean_diff / elems_per_row;
     const float denom = rsqrt(variance + epsilon);
 
-    const T mean_compute = conversion::to<T>(mean);
-    const T denom_compute = conversion::to<T>(denom);
+    //const T mean_compute = conversion::to<T>(mean);
+    //const T denom_compute = conversion::to<T>(denom);
 
     T *block_output = output + block_offset;
 
@@ -134,10 +134,11 @@ public:
 
 #pragma unRoll
       for (int j = 0; j < T_per_load; j++) {
-        iteration_buffer[j] =
-            (iteration_buffer[j] - mean_compute) * denom_compute;
-        iteration_buffer[j] =
-            iteration_buffer[j] * gamma_local[j] + beta_local[j];
+            float val = conversion::to<float>(iteration_buffer[j]);
+            val = (val - mean) * denom;
+            val =
+                val * conversion::to<float>(gamma_local[j]) + conversion::to<float>(beta_local[j]);
+            iteration_buffer[j] = conversion::to<T>(val);
       }
 
       if (do_loads) {
@@ -340,7 +341,7 @@ public:
         float vals_up_cast = conversion::to<float>(iteration_buffer[j]);
         float res_up_cast = conversion::to<float>(residual_buffer[j]);
         float bias_up_cast = conversion::to<float>(bias_buffer[j]);
-        vals_up_cast += res_up_cast + bias_up_cast;
+        vals_up_cast = vals_up_cast + bias_up_cast + res_up_cast;
         sum = reduce::element<rop::Add>(sum, vals_up_cast);
         iteration_buffer[j] = conversion::to<T>(vals_up_cast);
       }
@@ -372,9 +373,6 @@ public:
     const float variance = mean_diff / elems_per_row;
     const float denom = rsqrt(variance + epsilon);
 
-    const T mean_compute = conversion::to<T>(mean);
-    const T denom_compute = conversion::to<T>(denom);
-
     T *block_output = output + block_offset;
 
 #pragma unRoll
@@ -392,10 +390,11 @@ public:
 
 #pragma unRoll
       for (int j = 0; j < T_per_load; j++) {
-        iteration_buffer[j] =
-            (iteration_buffer[j] - mean_compute) * denom_compute;
-        iteration_buffer[j] =
-            iteration_buffer[j] * gamma_local[j] + beta_local[j];
+            float val = conversion::to<float>(iteration_buffer[j]);
+            val = (val - mean) * denom;
+            val =
+                val * conversion::to<float>(gamma_local[j]) + conversion::to<float>(beta_local[j]);
+            iteration_buffer[j] = conversion::to<T>(val);
       }
 
       if (do_loads) {
