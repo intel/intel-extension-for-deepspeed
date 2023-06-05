@@ -8,7 +8,6 @@ import shutil
 from pathlib import Path
 from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
 
-
 class SYCLOpBuilder(OpBuilder):
     def builder(self):
         try:
@@ -24,7 +23,7 @@ class SYCLOpBuilder(OpBuilder):
             extra_compile_args={
                 'cxx': self.strip_empty_entries(self.cxx_args()),
             },
-            extra_link_args=self.strip_empty_entries(self.extra_ldflags()))
+            extra_link_args=self.strip_empty_entries(self.extra_ldflags()) + self.fixed_aotflags())
         return dpcpp_ext
 
     def version_dependent_macros(self):
@@ -41,10 +40,16 @@ class SYCLOpBuilder(OpBuilder):
         return version_ge_1_1 + version_ge_1_3 + version_ge_1_5
 
     def cxx_args(self):
-        return ['-fsycl', '-O3', '-g', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64']
+        cxx_flags = ['-fsycl', '-fsycl-targets=spir64_gen', '-g', '-gdwarf-4', '-O3', '-std=c++17', '-fPIC', '-DMKL_ILP64', '-fno-strict-aliasing']
+        if os.environ.get('USE_MKL_GEMM'):
+            cxx_flags.append('-DUSE_MKL_GEMM')
+        return cxx_flags
 
     def extra_ldflags(self):
-        return ['-fsycl', '-fPIC', '-Wl,-export-dynamic']
+        return ['-fPIC', '-Wl,-export-dynamic']
+
+    def fixed_aotflags(self):
+        return ['-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs', "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode", '-Xs', "-device pvc"]
 
     def load(self, verbose=True):
         from deepspeed.git_version_info import installed_ops, torch_info  # noqa: F401

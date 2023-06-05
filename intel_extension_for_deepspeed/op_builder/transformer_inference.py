@@ -13,19 +13,22 @@ class InferenceBuilder(SYCLOpBuilder):
         return f'deepspeed.ops.transformer.inference.{self.NAME}_op'
 
     def is_compatible(self, verbose=True):
-        # TODO: check SYCL environment
         return super().is_compatible(verbose)
 
-    def load(self, verbose=True):
-        # TODO: remove temporary bypass
-        return None
-
     def sources(self):
-        return []
+        return [
+            sycl_kernel_path('csrc/transformer/inference/csrc/softmax.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/pt_binding.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/gelu.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onemkl_wrappers.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.cpp'),
+        ]
 
     def extra_ldflags(self):
         return []
 
     def include_paths(self):
-        return []
+        includes = [sycl_kernel_include('csrc/transformer/inference/includes'), 'csrc/transformer/inference/includes']
+        return includes
 
