@@ -44,23 +44,8 @@ public:
   void operator()(sycl::nd_item<2> pos) const {
     constexpr int T_per_load = ln::granularity / sizeof(T);
 
-    /* cg::thread_block tb = cg::this_thread_block(); */
-    /* cg::thread_block_tile<hw_warp_size> warp =
-     * cg::tiled_partition<hw_warp_size>(tb); */
-
-    // auto tb = sycl::ext::oneapi::experimental::this_group<2>();
     auto warp = sycl::ext::oneapi::experimental::this_sub_group();
-    // TODO: test for pos
     auto tb = pos.get_group();
-    // auto tg = pos.get_sub_group();
-
-    // X-dimension of the block
-    /* const int block_offset = (tb.group_index().x * (maxThreads /
-     * threadsPerGroup) * elems_per_row) + */
-    /*                          (tb.thread_index().y * elems_per_row); */
-    /* const int thread_offset = tb.thread_index().x * T_per_load; */
-    /* const int base_offset = block_offset + thread_offset; */
-    /* const int stride = tb.size() * T_per_load; */
 
     const int block_offset =
         (tb.get_group_id(1) * (maxThreads / threadsPerGroup) * elems_per_row) +
@@ -78,8 +63,6 @@ public:
 #pragma unRoll
     for (int i = 0; i < unRoll; i++) {
       T *iteration_buffer = local_buffer + i * T_per_load;
-      //T residual_buffer[T_per_load];
-      //T bias_buffer[T_per_load];
 
       mem_access::load_global<ln::granularity>(
           iteration_buffer, input_base + i * stride,
@@ -114,9 +97,6 @@ public:
     const float variance = mean_diff / elems_per_row;
     const float denom = rsqrt(variance + epsilon);
 
-    //const T mean_compute = conversion::to<T>(mean);
-    //const T denom_compute = conversion::to<T>(denom);
-
     T *block_output = output + block_offset;
 
 #pragma unRoll
@@ -149,10 +129,6 @@ public:
   };
 };
 
-// #define LAUNCH_FUSED_LN(unRollFactor, threadsPerGroup, maxThreads) \
-//     fused_ln<T, unRollFactor, threadsPerGroup, maxThreads>         \
-//         <<<grid, block, 0, stream>>>(output, vals, gamma, beta, epsilon, elems_per_row);
-
 #define LAUNCH_FUSED_LN(unRollFactor, threadsPerGroup, maxThreads)             \
   {                                                                            \
     fused_ln<T, unRollFactor, threadsPerGroup, maxThreads> fn(                 \
@@ -171,7 +147,7 @@ void launch_fused_ln(T *output, const T *vals, const T *gamma, const T *beta,
 
   constexpr int maxThreads = 256;
 
-  // For Flaoat, unRoll 4, for sycl::half, unRoll 2
+  // For Float, unRoll 4, for sycl::half, unRoll 2
   constexpr int internal_unRoll = sizeof(T) == 4 ? 4 : 2;
 
   const bool is_subblock_schedule = (elems_per_row <= 128) ? true : false;
@@ -201,15 +177,6 @@ void launch_fused_ln(T *output, const T *vals, const T *gamma, const T *beta,
   const int external_unRoll =
       (elems_per_row + elems_per_step - 1) / elems_per_step;
 
-  /* constexpr sycl::half test_inf = -std::numeric_limits<sycl::half>::infinity(); */
-  /* float test_inf_f = static_cast<float>(test_inf); */
-  /* printf("%f\n", test_inf_f); */
-
-  /* uint16_t half_neg_inf = 0xFC00; */ 
-  /* constexpr sycl::half test_ninf = reinterpret_cast<sycl::half>(0xFC00); */
-  /* float test_ninf_f = static_cast<float>(test_ninf); */
-  /* printf("%f\n", test_ninf_f); */
-  
   if (is_subblock_schedule) {
     // <=128
     if (threadsPerGroup == 1) {
@@ -297,9 +264,6 @@ public:
 
     auto tb = pos.get_group();
     auto warp = sycl::ext::oneapi::experimental::this_sub_group();
-    // TODO: test for pos
-    // auto tb = sycl::ext::oneapi::experimental::this_group<2>();
-    // auto tg = pos.get_sub_group();
 
     // X-dimension of the block
     const int block_offset =
@@ -425,7 +389,7 @@ void launch_fused_residual_ln(T *output, const T *vals, const T *residual,
 
   constexpr int maxThreads = 256;
 
-  // For Flaoat, unRoll 4, for sycl::half, unRoll 2
+  // For Float, unRoll 4, for sycl::half, unRoll 2
   constexpr int internal_unRoll = sizeof(T) == 4 ? 4 : 2;
 
   const bool is_subblock_schedule = (elems_per_row <= 128) ? true : false;
@@ -447,9 +411,6 @@ void launch_fused_residual_ln(T *output, const T *vals, const T *residual,
   const int groups_per_block =
       (rows < groups_per_block_max) ? rows : groups_per_block_max;
   const int groups_launch = (groups_per_block + rows - 1) / groups_per_block;
-
-  /* dim3 block(threadsPerGroup, groups_per_block); */
-  /* dim3 grid(groups_launch); */
 
   sycl::range<2> block{(unsigned long)groups_per_block, (size_t)threadsPerGroup};
   sycl::range<2> grid{(unsigned long)groups_per_block, (size_t)(threadsPerGroup * groups_launch)};

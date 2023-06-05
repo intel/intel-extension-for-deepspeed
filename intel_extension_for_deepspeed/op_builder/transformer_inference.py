@@ -13,12 +13,7 @@ class InferenceBuilder(SYCLOpBuilder):
         return f'deepspeed.ops.transformer.inference.{self.NAME}_op'
 
     def is_compatible(self, verbose=True):
-        # TODO: check SYCL environment
         return super().is_compatible(verbose)
-
-    # def load(self, verbose=True):
-    #     # TODO: remove temporary bypass
-    #     return None
 
     def sources(self):
         return [
@@ -34,7 +29,6 @@ class InferenceBuilder(SYCLOpBuilder):
         return []
 
     def include_paths(self):
-        # includes = [sycl_kernel_include('csrc/includes'), 'csrc/includes']
         includes = [sycl_kernel_include('csrc/transformer/inference/includes'), 'csrc/transformer/inference/includes']
         return includes
 

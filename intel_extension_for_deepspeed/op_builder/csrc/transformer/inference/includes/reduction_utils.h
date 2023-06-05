@@ -231,21 +231,18 @@ sycl::half init<ROpType::Max>()
 template <>
 sycl::half2 init<ROpType::Add>()
 {
-    /* constexpr sycl::half2 zero = {0x0000, 0x0000}; */
     return {0.0, 0.0};
 }
 
 template <>
 sycl::half2 init<ROpType::Min>()
 {
-    /* constexpr sycl::half2 inf = {0x7C00, 0x7C00}; */
     return {std::numeric_limits<sycl::half>::infinity(), std::numeric_limits<sycl::half>::infinity()};
 }
 
 template <>
 sycl::half2 init<ROpType::Max>()
 {
-    /* constexpr sycl::half2 neg_inf = {0xFC00, 0xFC00}; */
     return {-std::numeric_limits<sycl::half>::infinity(), -std::numeric_limits<sycl::half>::infinity()};
 }
 
@@ -359,14 +356,12 @@ void _block(sycl::group<2>& tb,
     // Separated for now in case this no longer is true
     constexpr int bytes = sizeof(float);
     // Unused when `partition_size == 1` or total_warps == 1
-    /* __shared__ float reduce_buffer[max_warps * elems]; */
     auto reduce_buffer = __group_local_memory<float[max_warps * elems]>(tb);
 
     // Always perform warp-scope reduction
     _warp<Ops...>(warp_arg, data);
 
     // If max_warps == 1 let's skip the runtime check
-    // TODO: meta_group_size replacement
     if (warp_arg.get_group_range().size() > 1 && total_warps != 1) {
         if (warp_arg.get_local_id() == 0) {
 #pragma unroll
@@ -377,7 +372,6 @@ void _block(sycl::group<2>& tb,
         }
 
         // Synchronization inside block-uniform conditional is safe
-        /* tb.sync(); */
         sycl::group_barrier(tb, tb.fence_scope);
 
         if (warp_arg.get_group_id() == 0) {
@@ -401,7 +395,6 @@ void _block(sycl::group<2>& tb,
         }
 
         // Synchronization inside block-uniform conditional is safe
-        /* tb.sync(); */
         sycl::group_barrier(tb, tb.fence_scope);
 
 #pragma unroll

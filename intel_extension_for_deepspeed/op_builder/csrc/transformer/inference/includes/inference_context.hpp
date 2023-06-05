@@ -60,7 +60,6 @@ public:
 
     virtual ~InferenceContext()
     {
-        /* _onemklQ = nullptr; */
         free(_gen);
 
         auto type_ = c10::DeviceType::XPU;
@@ -89,7 +88,6 @@ public:
                       unsigned min_out_tokens)
     {
         size_t total_size;
-        /* if (!_free_memory_size) { cudaMemGetInfo(&_free_memory_size, &total_size); } */
 
         // Flash attention requires padded heads and we'll conservatively allocate
         // for that here. Flash attention is only enabled for head size <= 128 right now
@@ -102,15 +100,6 @@ public:
         size_t temp_size = batch_size * num_heads * max_out_tokens * 2;
         size_t cache_size =
             num_layers * batch_size * ((num_heads * effective_head_size) / mp_size) * 2;
-        /* size_t minimal_requirements = */
-        /*     temp_size + (_free_memory_size > GIGABYTE ? 500 : 100) * MEGABYTE; */
-        /* if (_free_memory_size < minimal_requirements) { */
-        /*     printf("Requested:\t%lu\nFree:\t%lu\nTotal:\t%lu\n", */
-        /*            minimal_requirements, */
-        /*            _free_memory_size, */
-        /*            total_size); */
-        /*     throw std::runtime_error("Workspace can't be allocated, no enough memory."); */
-        /* } */
 
         _max_seq_len = (size_t)max_out_tokens;
         size_t workSpaceSize = ((external_cache ? (activation_size + temp_size)
@@ -130,11 +119,9 @@ public:
         auto current_queue = this->GetCurrentStream();
         if (!_workspace) {
             assert(_workspace == nullptr);
-            /* cudaMalloc(&_workspace, workSpaceSize); */
             _workspace = sycl::malloc_device(workSpaceSize, current_queue);
         } else if (_workSpaceSize < workSpaceSize) {
             sycl::free(_workspace, current_queue);
-            /* cudaMalloc(&_workspace, workSpaceSize); */
             _workspace = sycl::malloc_device(workSpaceSize, current_queue);
         }
         if (rank == 0 && !_workspace)

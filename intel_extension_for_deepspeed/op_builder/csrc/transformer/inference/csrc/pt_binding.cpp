@@ -241,7 +241,6 @@ at::Tensor ds_layer_norm_test(at::Tensor& input, at::Tensor& gamma, at::Tensor& 
     int bsz = input.size(0) * input.size(1);
 
     T* workspace = (T*)InferenceContext::Instance().GetWorkSpace();
-    /* workspace += (3 * bsz * input.size(2)); */
 
     launch_fused_ln(workspace,
                     (const T*)input.data_ptr(),
@@ -556,11 +555,6 @@ at::Tensor fused_gemm_gelu(at::Tensor& input,
 
     int intm_dim = (transposed_mode || q_int8) ? weight.size(0) : weight.size(1);
 
-    // auto output = at::from_blob((T*)InferenceContext::Instance().GetWorkSpace() +
-    // torch::numel(input),
-    //                            {input.size(0), input.size(1), out_size},
-    //                            options);
-    // T* intermediate = (T*)input.data_ptr() + torch::numel(input);
     auto intermediate = at::empty({input.size(0), input.size(1), intm_dim}, options);
 
     int bsz = input.size(0) * input.size(1);
