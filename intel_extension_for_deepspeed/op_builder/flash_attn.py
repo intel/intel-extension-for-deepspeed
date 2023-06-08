@@ -1,0 +1,40 @@
+"""
+Copyright 2020 The Microsoft DeepSpeed Team
+"""
+from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+
+
+class FlashAttentionBuilder(SYCLOpBuilder):
+    BUILD_VAR = "DS_BUILD_FlashAttention"
+    NAME = "flash_atten"
+
+    def __init__(self):
+        super().__init__(name=self.NAME)
+
+    def absolute_name(self):
+        return f'deepspeed.ops.{self.NAME}_op'
+
+    def sources(self):
+        return [
+            sycl_kernel_path('csrc/attention/flash_atten_kernels.cpp'),
+            sycl_kernel_path('csrc/attention/flash_atten.dp.cpp'),
+        ]
+
+    def include_paths(self):
+        return [
+            sycl_kernel_include('csrc/includes'),
+            sycl_kernel_include('../../third_party/xetla/include'),
+            'csrc/includes',
+            '../../third_party/xetla/include',
+        ]
+
+    def extra_ldflags(self):
+        args = super().extra_ldflags()
+        args += ['-fsycl-targets=spir64_gen']
+        args += ["-Xs \"-device pvc -options '-vc-disable-indvars-opt -vc-codegen -doubleGRF -Xfinalizer -printregusage -Xfinalizer -enableBCR -DPASTokenReduction '\" "]
+        return args
+
+    def cxx_args(self):
+        args = super().cxx_args()
+        args += ['-fsycl-targets=spir64_gen']
+        return args
