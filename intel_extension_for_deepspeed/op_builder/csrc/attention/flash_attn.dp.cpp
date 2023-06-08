@@ -2,7 +2,7 @@
 #include "context.hpp"
 #include "flash_attn.hpp"
 
-// [Bs, Hn, Sl, Hs] -> [Bs, Sl, Hn, Hs]
+// [Bs, Hn, Sl, Hs]
 std::vector<torch::Tensor> flash_atten_fwd(const torch::Tensor &q,
                                            const torch::Tensor &k,
                                            const torch::Tensor &v,
@@ -16,6 +16,7 @@ std::vector<torch::Tensor> flash_atten_fwd(const torch::Tensor &q,
                                            const bool return_attn_probs) {
     float dropout_scale = 1 / (1 - dropout_p);
     torch::Tensor output = torch::empty({bs, seqlens, head_number, head_size}, q.options());
+    torch::Tensor out_buffer = torch::empty({bs, seqlens, head_number, head_size}, q.options());
     torch::Tensor softmax_res;
     if (return_attn_probs) {
         softmax_res = torch::empty({bs, head_number, seqlens, seqlens}, q.options());
@@ -25,6 +26,7 @@ std::vector<torch::Tensor> flash_atten_fwd(const torch::Tensor &q,
     void *k_ptr = (void *)k.data_ptr();
     void *v_ptr = (void *)v.data_ptr();
     void *output_ptr = (void *)output.data_ptr();
+    void *out_buffer_ptr = (void *)out_buffer.data_ptr();
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
 
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
@@ -32,6 +34,7 @@ std::vector<torch::Tensor> flash_atten_fwd(const torch::Tensor &q,
     _flash_atten.Forward(
         stream,
         output_ptr,
+        out_buffer_ptr,
         softmax_res_ptr,
         bs,
         head_number,

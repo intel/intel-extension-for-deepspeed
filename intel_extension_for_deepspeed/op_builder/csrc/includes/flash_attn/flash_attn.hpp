@@ -9,8 +9,6 @@
 #endif
 
 #include <stddef.h>
-#include "flash_attn_fwd_kernel.hpp"
-#include "flash_attn_fwd_program.hpp"
 
 bool flash_scaled_attn_bf16_inf(
     sycl::queue& queue,

@@ -15,7 +15,8 @@
  *******************************************************************************/
 
 #pragma once
-
+#include <limits>
+// #include "flash_attn_fwd_debug.hpp"
 #include "flash_attn_fwd_kernel.hpp"
 #include "flash_attn_fwd_utils.hpp"
 
@@ -30,6 +31,9 @@ struct FLASH_ATTENTION_FWD_H128::program {
             param_S::mat_out_t &matS, param_P::rowmax_t &m_tilde_vec,
             param_P::rowsum_t &l_tilde_vec);
 
+    static __XETLA_API KERNEL_FUNC void init_ml(utils::work_item<3> &ei,
+            param_P::rowmax_t &m_vec, param_P::rowsum_t &l_vec);
+
     static __XETLA_API KERNEL_FUNC void load_ml(utils::work_item<3> &ei,
             dtype_m *ptr_m, param_P::rowmax_t &m_vec, param_P::rowsum_t &l_vec);
 
@@ -41,8 +45,8 @@ struct FLASH_ATTENTION_FWD_H128::program {
 
     static __XETLA_API KERNEL_FUNC void calculate_PV(utils::work_item<3> &ei,
             uint32_t batch_size, uint32_t seq_len, uint32_t T_r, uint32_t T_c,
-            param_O::mat_out_t &matO_new, param_P::mat_out_t &matP,
-            dtype_m *ptr_m, dtype_v *ptr_v, dtype_b *ptr_b,
+            dtype_b *ptr_b, param_O::mat_out_t &matO_new,
+            param_P::mat_out_t &matP, dtype_v *ptr_v,
             param_P::rowmax_t &m_new_vec, param_P::rowmax_t &m_tilde_vec);
 
     static __XETLA_API KERNEL_FUNC void load_O(utils::work_item<3> &ei,
@@ -121,6 +125,12 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_P_ij(
         param_P::rowmax_t &m_tilde_vec, param_P::rowsum_t &l_tilde_vec) {
     using mat_t = param_S::mat_out_t;
     using mat_dtype = mat_t::dtype;
+    using vec_dtype = param_P::rowmax_t::element_type;
+    static constexpr int vec_length = param_P::rowmax_t::length;
+    static_assert(std::is_same_v<vec_dtype, param_P::rowsum_t::element_type>,
+            "dtype mismatch");
+    static_assert(
+            vec_length == param_P::rowsum_t::length, "vec_length mismatch");
     using mat_tile_shape = param_S::mat_tile_shape;
     using mat_worker_scope_t = mat_tile_shape::work_group_t;
     mat_worker_scope_t g(ei.get_local_linear_id());
@@ -128,7 +138,9 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_P_ij(
     int32_t i_s = g.get_id() / mat_tile_shape::wg_size_x;
     uint32_t nbarrier_id = i_s;
     uint32_t slm_base_addr = param_P::slm_base_addr
-            + param_P::reduce_slm_size / param_P::reduce_list_ylength * i_s;
+            + i_s * param_P::reduce_list_xlength * param_P::rowmax_t::length
+                    * sizeof(vec_dtype);
+
     // 1. m_tilde_ij = rowmax(S_ij)
     // where:
     //   - shape(m_tilde_ij) = [B_r,]
@@ -138,7 +150,6 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_P_ij(
         rowmax_t m_tilde_vec_thread
                 = gpu::xetla::subgroup::tile_reduce<reduce_op_t, mat_t,
                         mat_dtype, 1>(matS);
-        m_tilde_vec = m_tilde_vec_thread;
         param_P::wg_reduce_max_t wg_reduce_max(j_s, nbarrier_id, slm_base_addr);
         m_tilde_vec = wg_reduce_max(m_tilde_vec_thread);
     }
@@ -166,6 +177,13 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_P_ij(
     }
 }
 
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::init_ml(
+        utils::work_item<3> &ei, param_P::rowmax_t &m_vec,
+        param_P::rowsum_t &l_vec) {
+    m_vec = -std::numeric_limits<float>::infinity();
+    l_vec = 0.0f;
+}
+
 __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::load_ml(
         utils::work_item<3> &ei, dtype_m *ptr_m, param_P::rowmax_t &m_vec,
         param_P::rowsum_t &l_vec) {
@@ -191,10 +209,9 @@ FLASH_ATTENTION_FWD_H128::program::calculate_new_ml(utils::work_item<3> &ei,
 
 __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_PV(
         utils::work_item<3> &ei, uint32_t batch_size, uint32_t seq_len,
-        uint32_t T_r, uint32_t T_c, param_O::mat_out_t &matO_new,
-        param_P::mat_out_t &matP, dtype_m *ptr_m, dtype_v *ptr_v,
-        dtype_b *ptr_b, param_P::rowmax_t &m_new_vec,
-        param_P::rowmax_t &m_tilde_vec) {
+        uint32_t T_r, uint32_t T_c, dtype_b *ptr_b,
+        param_O::mat_out_t &matO_new, param_P::mat_out_t &matP, dtype_v *ptr_v,
+        param_P::rowmax_t &m_new_vec, param_P::rowmax_t &m_tilde_vec) {
     // TODO: use slm for store
     // 1. store P_ij to shared local memory (slm)
     // where:
@@ -331,41 +348,58 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_P_ij(
 __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_global_O(
         utils::work_item<3> &ei, uint32_t batch_dim, uint32_t head_dim,
         uint32_t seq_len, dtype_o *ptr_o, param_O::mat_out_t &matO) {
-    const uint32_t B = batch_dim;
-    const uint32_t N = head_dim;
-    const uint32_t F = seq_len;
-    static constexpr uint32_t tile_size_y = param_O::m_s;
-    static constexpr uint32_t tile_size_x = param_O::n_s;
+    // const uint32_t B = batch_dim;
+    // const uint32_t N = head_dim;
+    // const uint32_t F = seq_len;
+    // static constexpr uint32_t tile_size_y = param_O::m_s;
+    // static constexpr uint32_t tile_size_x = param_O::n_s;
 
-    gpu::xetla::xetla_tdescriptor transpose_store_tdecs;
-    // Define a temprary vector as output buffer
-    gpu::xetla::xetla_vector<dtype_o, tile_size_x> out_reg;
+    // gpu::xetla::xetla_tdescriptor transpose_store_tdecs;
+    // // Define a temprary vector as output buffer
+    // gpu::xetla::xetla_vector<dtype_o, tile_size_x> out_reg;
 
-    param_O::brgemm_t::work_group_t g(ei.get_local_linear_id());
-    // Calculate new coordination of each element
-    uint32_t b = ei.get_group(2) / N; // dim0 coord
-    uint32_t n = ei.get_group(2) % N; // dim1 coord
-    uint32_t start_m = ei.get_group(0) * param_O::m_w;
-    uint32_t start_n = ei.get_group(1) * param_O::n_w;
-    uint32_t f
-            = start_m + param_O::brgemm_t::get_matC_offset_y(g); // dim2 coord
-    uint32_t h
-            = start_n + param_O::brgemm_t::get_matC_offset_x(g); // dim3 coord
+    // param_O::brgemm_t::work_group_t g(ei.get_local_linear_id());
+    // // Calculate new coordination of each element
+    // uint32_t b = ei.get_group(2) / N; // dim0 coord
+    // uint32_t n = ei.get_group(2) % N; // dim1 coord
+    // uint32_t start_m = ei.get_group(0) * param_O::m_w;
+    // uint32_t start_n = ei.get_group(1) * param_O::n_w;
+    // uint32_t f
+    //         = start_m + param_O::brgemm_t::get_matC_offset_y(g); // dim2 coord
+    // uint32_t h
+    //         = start_n + param_O::brgemm_t::get_matC_offset_x(g); // dim3 coord
 
-    // transpose 8 * 16 tile and store to global
+    // // transpose 8 * 16 tile and store to global
 
-    for (uint32_t j = 0; j < tile_size_y; ++j, ++f) {
-        // TODO: vairiable align with FLASH_ATTENTION_FWD_H128
-        uint32_t dst_offset = b * N * F * H + n * F * H + f * H + h;
-        out_reg = matO.reg.xetla_select<tile_size_x, 1>(j * tile_size_x);
-        gpu::xetla::xetla_fill_tdesc<dtype_o, tile_size_x /*, 1, 1*/>(
-                transpose_store_tdecs.xetla_format<uint32_t>(),
-                ptr_o + dst_offset, H, 1, H, h, 0);
-        gpu::xetla::xetla_tstore_global<dtype_o, tile_size_x,
-                gpu::xetla::cache_hint::write_back,
-                gpu::xetla::cache_hint::write_back>(
-                transpose_store_tdecs, out_reg);
-    }
+    // for (uint32_t j = 0; j < tile_size_y; ++j, ++f) {
+    //     // TODO: vairiable align with FLASH_ATTENTION_FWD_H128
+    //     uint32_t dst_offset = b * N * F * H + n * F * H + f * H + h;
+    //     out_reg = matO.reg.xetla_select<tile_size_x, 1>(j * tile_size_x);
+    //     gpu::xetla::xetla_fill_tdesc<dtype_o, tile_size_x /*, 1, 1*/>(
+    //             transpose_store_tdecs.xetla_format<uint32_t>(),
+    //             ptr_o + dst_offset, H, 1, H, h, 0);
+    //     gpu::xetla::xetla_tstore_global<dtype_o, tile_size_x,
+    //             gpu::xetla::cache_hint::write_back,
+    //             gpu::xetla::cache_hint::write_back>(
+    //             transpose_store_tdecs, out_reg);
+    // }
+
+    // store O_i untransposed
+    int batch_idx = ei.get_group(0);
+    int start_m = ei.get_group(1) * param_O::m_w;
+    int start_n = ei.get_group(2) * param_O::n_w;
+    using mem_desc_output_t = gpu::xetla::mem_desc_t<dtype_o,
+            gpu::xetla::mem_layout::row_major, gpu::xetla::mem_space::global>;
+    mem_desc_output_t md_dst;
+    md_dst.init({ptr_o + batch_idx * seq_len * H}, {H, seq_len, H},
+            {start_n, start_m});
+    using epilogue_t = gpu::xetla::group::epilogue_t<
+            gpu::xetla::group::epilogue_policy_default<
+                    gpu::xetla::gpu_arch::Xe>,
+            param_O::tile_shape, mem_desc_output_t>;
+    epilogue_t epilogue;
+    param_S::brgemm_t::work_group_t g(ei.get_local_linear_id());
+    epilogue(g, matO, md_dst);
 }
 
 __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_global_ml(
@@ -446,27 +480,59 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::run(
     typename param_P::rowmax_t m_new_vec;
     typename param_P::rowsum_t l_new_vec;
 
-    debug::test_reg_op(matO);
+    matO.init(0.0f);
+    program::init_ml(uei, m_vec, l_vec);
 
-    for (int j = 0; j < T_c; ++j) {
-        uei.update_group_coord(2, j);
+    for (int j_w = 0; j_w < T_c; ++j_w) {
+        uei.update_group_coord(2, j_w);
         {
             typename param_S::mat_out_t matS;
             program::calculate_S_ij(
                     uei, seq_len, matS, ptr_q, ptr_k, hs_rsqrt_scale);
-            debug::store_S_ij(uei, seq_len, matS, ptr_o);
-            continue;
+            // if constexpr (debug::test_phase == 1) {
+            //     debug::store_S_ij(uei, seq_len, matS, ptr_o);
+            //     continue;
+            // }
+
             auto &matP = matS;
             program::calculate_P_ij(uei, matS, m_tilde_vec, l_tilde_vec);
-            // debug::store_S_ij(uei, seq_len, matS, ptr_o);
+            // if constexpr (debug::test_phase == 2) {
+            //     debug::store_S_ij(uei, seq_len, matP, ptr_o);
+            //     continue;
+            // }
 
             program::load_ml(uei, ptr_m, m_vec, l_vec);
 
             program::calculate_new_ml(uei, m_new_vec, m_tilde_vec, m_vec,
                     l_new_vec, l_tilde_vec, l_vec);
+            // if constexpr (debug::test_phase == 3) {
+            //     program::store_ml(uei, m_vec, m_new_vec, l_vec, l_new_vec);
+            //     debug::store_S_ij(uei, seq_len, matP, ptr_o);
+            //     typename param_P::factor_tile_t m_new_store;
+            //     typename param_P::factor_tile_t l_new_store;
+            //     m_new_store.reg = m_new_vec;
+            //     l_new_store.reg = l_new_vec;
+            //     int batch_idx = ei.get_group(0);
+            //     uint32_t factor_size = utils::factor_size(seq_len);
+            //     debug::store_ml(uei,
+            //             reinterpret_cast<dtype_m *>(ptr_b)
+            //                     + batch_idx * (factor_size * T_c)
+            //                     + j_w * factor_size,
+            //             m_new_store, m_payload, l_new_store, l_payload);
+            //     continue;
+            // }
 
-            program::calculate_PV(uei, batch_size, seq_len, T_r, T_c, matO_new,
-                    matP, ptr_m, ptr_v, ptr_b, m_new_vec, m_tilde_vec);
+            program::calculate_PV(uei, batch_size, seq_len, T_r, T_c, ptr_b,
+                    matO_new, matP, ptr_v, m_new_vec, m_tilde_vec);
+            // if constexpr (debug::test_phase == 4) {
+            //     program::store_ml(uei, m_vec, m_new_vec, l_vec, l_new_vec);
+            //     uei.update_group_coord(2, 0);
+            //     debug::template store_O_i<float, gpu::xetla::result_reduce_sum>(
+            //             uei, seq_len, matO_new,
+            //             reinterpret_cast<float *>(ptr_o));
+            //     uei.update_group_coord(2, j_w);
+            //     continue;
+            // }
         }
 
         program::load_O(uei, matO, m_new_vec, m_vec);
@@ -476,7 +542,10 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::run(
 
         program::store_ml(uei, m_vec, m_new_vec, l_vec, l_new_vec);
     }
-    return;
+    // if constexpr (debug::test_phase == 1 || debug::test_phase == 2
+    //         || debug::test_phase == 3 || debug::test_phase == 4) {
+    //     return;
+    // }
     program::store_global_O(uei, batch_dim, head_dim, seq_len, ptr_o, matO);
     program::store_global_ml(
             uei, ptr_m, m_store, m_payload, l_store, l_payload);

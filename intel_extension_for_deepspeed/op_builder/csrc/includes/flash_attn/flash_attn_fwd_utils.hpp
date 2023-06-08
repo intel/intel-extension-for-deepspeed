@@ -18,6 +18,7 @@
 
 #include "flash_attn_fwd_kernel.hpp"
 
+
 struct FLASH_ATTENTION_FWD_H128::utils {
 
     template <int dims = 1>

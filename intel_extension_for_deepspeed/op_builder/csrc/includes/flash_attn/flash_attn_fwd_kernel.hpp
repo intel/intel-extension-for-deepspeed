@@ -273,7 +273,7 @@ public:
 
     struct utils;
     struct program;
-    struct debug;
+    // struct debug;
 
 public:
     sycl::nd_range<3> get_nd_range() const {
@@ -283,7 +283,7 @@ public:
         sycl::nd_range<3> nd_range(global_range * local_range, local_range);
 
         return nd_range;
-    };
+    }
 
     __XETLA_API KERNEL_FUNC void run(gpu::xetla::xetla_exec_item<3> &ei) const;
 };
