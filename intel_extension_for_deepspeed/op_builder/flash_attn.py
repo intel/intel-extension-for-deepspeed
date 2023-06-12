@@ -23,9 +23,11 @@ class FlashAttentionBuilder(SYCLOpBuilder):
     def include_paths(self):
         return [
             sycl_kernel_include('csrc/includes'),
+            sycl_kernel_include('csrc/includes/flash_attn'),
             sycl_kernel_include('../../third_party/xetla/include'),
             'csrc/includes',
             '../../third_party/xetla/include',
+            'csrc/includes/flash_attn',
         ]
 
     def extra_ldflags(self):
