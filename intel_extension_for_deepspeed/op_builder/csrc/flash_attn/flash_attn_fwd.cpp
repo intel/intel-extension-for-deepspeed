@@ -35,7 +35,7 @@ bool flash_scaled_attn_bf16_inf(
     const void* q_ptr, // pointer to Q data buffer, [Bs, Hn, Sl, Hs]
     const void* k_ptr, // pointer to K data buffer, [Bs, Hn, Sl, Hs]
     const void* v_ptr, // pointer to V data buffer, [Bs, Hn, Sl, Hs]
-    const bool is_casual = true) {
+    const bool is_casual) {
   return false;
 }
 template <typename P>
@@ -82,11 +82,10 @@ bool flash_scaled_attn_bf16_fwd(
     const void* q_ptr, // pointer to Q data buffer, [Bs, Hn, Sl, Hs]
     const void* k_ptr, // pointer to K data buffer, [Bs, Hn, Sl, Hs]
     const void* v_ptr, // pointer to V data buffer, [Bs, Hn, Sl, Hs]
-    const void* drop_mask =
-        nullptr, // for dtopout mask if has, use uint8_t as data type
-    const float dropout_scale = 1.0, // dropout_scale = 1 / (1 - drop_p)
-    const bool is_casual = true, // Indicate whether do mask_fill before softmax
-    const bool store_softmax_out = false) {
+    const void* drop_mask, // for dtopout mask if has, use uint8_t as data type
+    const float dropout_scale, // dropout_scale = 1 / (1 - drop_p)
+    const bool is_casual, // Indicate whether do mask_fill before softmax
+    const bool store_softmax_out) {
   bool ret = false;
   if (Hs == 128) {
     using P = xpu::xetla::FLASH_ATTENTION_FWD_H128;

@@ -32,7 +32,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
     FlashAttention _flash_attn = FlashAttention();
     _flash_attn.Forward(
-        stream,
+        *stream,
         output_ptr,
         out_buffer_ptr,
         softmax_res_ptr,
@@ -44,9 +44,10 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
         q_ptr,
         k_ptr,
         v_ptr,
-        dropout_scale=dropout_scale,
-        store_softmax_out=return_attn_probs,
-        is_causal=causal
+        nullptr,
+        dropout_scale,
+        causal,
+        return_attn_probs
     );
     return {output, softmax_res};
 }

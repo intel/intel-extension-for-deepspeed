@@ -10,6 +10,9 @@
 
 #include <stddef.h>
 
+namespace xpu {
+namespace xetla {
+
 bool flash_scaled_attn_bf16_inf(
     sycl::queue& queue,
     // void* output, // pointer to output buffer, [Bs, Hn, Sl, Hs] ==> [Bs, Sl,
@@ -84,6 +87,8 @@ bool flash_scaled_attn_bf16_bwd(
         false); // Indicate whether softmax result has been saved and not need
                 // to be re-computed
 
+} // namespace xetla
+} // namespace xpu
 
 class FlashAttention {
 public:
@@ -101,12 +106,11 @@ public:
                  const void* q_ptr,
                  const void* k_ptr,
                  const void* v_ptr,
-                 const void *attn_mask_ptr = nullptr,
                  const void *drop_mask = nullptr,
                  const float dropout_scale = 1.0,
-                 const bool store_softmax_out = false,
-                 const bool is_causal = false) {
-        return flash_scaled_attn_bf16_fwd(
+                 const bool is_causal = true,
+                 const bool store_softmax_out = false) {
+        return xpu::xetla::flash_scaled_attn_bf16_fwd(
             stream,
             output,
             out_buffer,
@@ -119,11 +123,10 @@ public:
             q_ptr,
             k_ptr,
             v_ptr,
-            attn_mask_ptr,
             drop_mask,
             dropout_scale,
-            store_softmax_out,
-            is_causal
+            is_causal,
+            store_softmax_out
         );
     }
 };
