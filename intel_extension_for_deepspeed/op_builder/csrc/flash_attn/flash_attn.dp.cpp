@@ -3,7 +3,7 @@
 #include "flash_attn.hpp"
 
 // [Bs, Hn, Sl, Hs]
-std::vector<torch::Tensor> flash_atten_fwd(const torch::Tensor &q,
+std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
                                            const torch::Tensor &k,
                                            const torch::Tensor &v,
                                            uint32_t &bs,
@@ -30,8 +30,8 @@ std::vector<torch::Tensor> flash_atten_fwd(const torch::Tensor &q,
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
 
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
-    FlashAttention _flash_atten = FlashAttention();
-    _flash_atten.Forward(
+    FlashAttention _flash_attn = FlashAttention();
+    _flash_attn.Forward(
         stream,
         output_ptr,
         out_buffer_ptr,
@@ -53,7 +53,7 @@ std::vector<torch::Tensor> flash_atten_fwd(const torch::Tensor &q,
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("flash_atten_fwd",
-          &flash_atten_fwd,
+    m.def("flash_attn_fwd",
+          &flash_attn_fwd,
           "Flash attention forward for fp32");
 }
