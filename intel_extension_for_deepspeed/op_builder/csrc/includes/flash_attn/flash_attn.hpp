@@ -106,7 +106,7 @@ public:
                  const void* q_ptr,
                  const void* k_ptr,
                  const void* v_ptr,
-                 const void *drop_mask = nullptr,
+                 const void* drop_mask = nullptr,
                  const float dropout_scale = 1.0,
                  const bool is_causal = true,
                  const bool store_softmax_out = false) {
@@ -125,6 +125,50 @@ public:
             v_ptr,
             drop_mask,
             dropout_scale,
+            is_causal,
+            store_softmax_out
+        );
+    }
+
+    bool Backward(sycl::queue &stream,
+                  void* dq,
+                  void* dk,
+                  void* dv,
+                  void* grad_softmax
+                  const void* out,
+                  const void* gradout,
+                  const uint32_t &Bs,
+                  const uint32_t &Hn,
+                  const uint32_t &Sl,
+                  const uint32_t &Hs,
+                  const float &hs_rsqrt_scale,
+                  const void* q_ptr,
+                  const void* k_ptr,
+                  const void* v_ptr,
+                  const void* drop_mask = nullptr,
+                  const float dropout_scale = 1.0,
+                  const void* softmax_workspace_ptr,
+                  const bool is_causal = true,
+                  const bool store_softmax_out = false) {
+        return xpu::xetla::flash_scaled_attn_bf16_bwd(
+            stream,
+            dq,
+            dk,
+            dv,
+            grad_softmax,
+            out,
+            gradout,
+            Bs,
+            Hn,
+            Sl,
+            Hs,
+            hs_rsqrt_scale,
+            q_ptr,
+            k_ptr,
+            v_ptr,
+            drop_mask,
+            dropout_scale,
+            softmax_workspace_ptr,
             is_causal,
             store_softmax_out
         );
