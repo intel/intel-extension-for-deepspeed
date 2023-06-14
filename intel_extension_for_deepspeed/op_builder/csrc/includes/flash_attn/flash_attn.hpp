@@ -134,7 +134,7 @@ public:
                   void* dq,
                   void* dk,
                   void* dv,
-                  void* grad_softmax
+                  void* grad_softmax,
                   const void* out,
                   const void* gradout,
                   const uint32_t &Bs,
@@ -145,8 +145,8 @@ public:
                   const void* q_ptr,
                   const void* k_ptr,
                   const void* v_ptr,
-                  const void* drop_mask = nullptr,
-                  const float dropout_scale = 1.0,
+                  const void* drop_mask,
+                  const float dropout_scale,
                   const void* softmax_workspace_ptr,
                   const bool is_causal = true,
                   const bool store_softmax_out = false) {

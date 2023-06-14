@@ -22,7 +22,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
         softmax_res = torch::empty({bs, head_number, seqlens, seqlens}, q.options());
     }
     else {
-        sofmax_res = torch::empty({bs * head_number, 2, seqlens}, q.options());
+        softmax_res = torch::empty({bs * head_number, 2, seqlens}, q.options());
     }
 
     void *q_ptr = (void *)q.data_ptr();
@@ -49,7 +49,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
         k_ptr,
         v_ptr,
         drop_mask_ptr,
-        dropout_scale,
+        dropout_p,
         causal,
         return_softmax
     );
@@ -57,7 +57,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
 }
 
 std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
-                                          const torch::Tensor &q
+                                          const torch::Tensor &q,
                                           const torch::Tensor &k,
                                           const torch::Tensor &v,
                                           const torch::Tensor &out,
