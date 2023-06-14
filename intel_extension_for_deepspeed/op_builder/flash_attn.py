@@ -18,6 +18,7 @@ class FlashAttentionBuilder(SYCLOpBuilder):
         return [
             sycl_kernel_path('csrc/flash_attn/flash_attn.dp.cpp'),
             sycl_kernel_path('csrc/flash_attn/flash_attn_fwd.cpp'),
+            sycl_kernel_path('csrc/flash_attn/flash_attn_bwd.cpp'),
         ]
 
     def include_paths(self):
