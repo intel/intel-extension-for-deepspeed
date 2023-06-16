@@ -53,7 +53,7 @@ class SYCLOpBuilder(OpBuilder):
 
     def load(self, verbose=True):
         from deepspeed.git_version_info import installed_ops, torch_info  # noqa: F401
-        if installed_ops[self.name]:
+        if self.name in installed_ops:
             return importlib.import_module(self.absolute_name())
         else:
             return self.jit_load(verbose)
