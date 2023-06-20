@@ -41,7 +41,16 @@ class FLASH_ATTENTION_FWD_H128 {
   // hidden size per head
   static constexpr uint32_t H = 128;
 
+  enum class pv_buffer_type { global, local, reg };
+
   struct tuning_parameter {
+    static constexpr bool is_causal = true;
+    static constexpr bool enable_mask = is_causal;
+    // use global memory ptr_b for storing P_ij
+    // slm version WIP
+    // register version WIP
+    static constexpr pv_buffer_type pv_buffer = pv_buffer_type::global;
+
     static constexpr int thread_num = 32;
 
     static constexpr int B_r = 128;
@@ -91,6 +100,9 @@ class FLASH_ATTENTION_FWD_H128 {
   };
 
   static constexpr int thread_num = tuning_parameter::thread_num;
+  static constexpr int is_causal = tuning_parameter::is_causal;
+  static constexpr int enable_mask = tuning_parameter::enable_mask;
+  static constexpr pv_buffer_type pv_buffer = tuning_parameter::pv_buffer;
   static constexpr int B_r = tuning_parameter::B_r;
   static constexpr int B_c = tuning_parameter::B_c;
   const uint32_t batch_dim;
@@ -165,6 +177,8 @@ class FLASH_ATTENTION_FWD_H128 {
         m_w * n_w % (n_s * thread_num) == 0,
         "invalid configuration for m_w");
     static constexpr int m_s = m_w * n_w / n_s / thread_num;
+    static constexpr int n_x = n_w / n_s;
+    static constexpr int n_y = m_w / m_s;
     using tile_shape = gpu::xetla::group::tile_shape_t<n_w, m_w, n_s, m_s>;
     using brgemm_t = gpu::xetla::group::brgemm_t<
         compute_policy,
@@ -175,6 +189,7 @@ class FLASH_ATTENTION_FWD_H128 {
     using mat_out_t = brgemm_t::matAcc_t;
     static constexpr int split_k_cnt = k_w_ / k_iter_num;
     static constexpr int barrier_count = brgemm_t::barrier_count;
+    static constexpr int barrier_offset = 0;
     static constexpr int slm_size = brgemm_t::slm_size;
   };
 
@@ -241,17 +256,31 @@ class FLASH_ATTENTION_FWD_H128 {
     using reduce_nbarrier_t =
         gpu::xetla::xetla_nbarrier_t<reduce_list_xlength, reduce_list_xlength>;
     static constexpr int reduce_barrier_count =
-        (reduce_list_xlength > 0) ? reduce_list_ylength : 0;
+        ((param_S::barrier_count == 0) && (reduce_list_xlength > 0))
+        ? reduce_list_ylength
+        : 0;
+    static constexpr int reduce_barrier_offset = 0;
+    static_assert(
+        (param_S::barrier_count == 0) ||
+            ((param_S::barrier_count > 0) &&
+             (param_S::n_x == reduce_list_xlength)),
+        "param_S::n_x expect to match reduce_list_xlength");
     static constexpr int reduce_slm_size = (reduce_list_xlength > 0)
         ? (reduce_list_ylength * reduce_list_xlength * reduce_elem_count *
            sizeof(vec_dtype))
         : 0;
 
     static constexpr uint32_t slm_base_addr = 0;
-    using mem_desc_output_p = gpu::xetla::mem_desc_t<
-        dtype_p,
-        gpu::xetla::mem_layout::row_major,
-        gpu::xetla::mem_space::local>;
+    using mem_desc_output_p = std::conditional_t<
+        pv_buffer == pv_buffer_type::global,
+        gpu::xetla::mem_desc_t<
+            dtype_b,
+            gpu::xetla::mem_layout::row_major,
+            gpu::xetla::mem_space::global>,
+        gpu::xetla::mem_desc_t<
+            dtype_p,
+            gpu::xetla::mem_layout::row_major,
+            gpu::xetla::mem_space::local>>;
     using epilogue_t = gpu::xetla::group::epilogue_t<
         gpu::xetla::group::epilogue_policy_default<gpu::xetla::gpu_arch::Xe>,
         mat_tile_shape,
@@ -259,11 +288,13 @@ class FLASH_ATTENTION_FWD_H128 {
     using store_nbarrier_t =
         gpu::xetla::xetla_nbarrier_t<thread_num, thread_num>;
     static constexpr int local_store_barrier_count = 1;
-    static constexpr int local_store_slm_size =
+    static constexpr int local_store_barrier_offset =
+        param_S::barrier_count + reduce_barrier_count;
+    static constexpr int local_store_slm_size = param_S::n_x * param_S::n_y *
         mat_type::tile_elems * sizeof(mat_type::dtype);
 
     static constexpr int barrier_count =
-        std::max({reduce_barrier_count, local_store_barrier_count});
+        reduce_barrier_count + local_store_barrier_count;
     static constexpr int slm_size =
         std::max({reduce_slm_size, local_store_slm_size});
   };
@@ -286,11 +317,7 @@ class FLASH_ATTENTION_FWD_H128 {
         compute_attr,
         perf_tuning_knob,
         gpu::xetla::gpu_arch::Xe>;
-    // TODO: load P from slm
-    using mem_desc_input_p = gpu::xetla::mem_desc_t<
-        dtype_m,
-        gpu::xetla::mem_layout::row_major,
-        gpu::xetla::mem_space::global>;
+    using mem_desc_input_p = param_P::mem_desc_output_p;
     using mem_desc_input_v = gpu::xetla::mem_desc_t<
         dtype_v,
         gpu::xetla::mem_layout::row_major,
@@ -304,6 +331,8 @@ class FLASH_ATTENTION_FWD_H128 {
         m_w * n_w % (n_s * thread_num) == 0,
         "invalid configuration for m_w");
     static constexpr int m_s = m_w * n_w / n_s / thread_num;
+    static constexpr int n_x = n_w / n_s;
+    static constexpr int n_y = m_w / m_s;
     using tile_shape = gpu::xetla::group::tile_shape_t<n_w, m_w, n_s, m_s>;
     using brgemm_t = gpu::xetla::group::brgemm_t<
         compute_policy,
@@ -312,7 +341,16 @@ class FLASH_ATTENTION_FWD_H128 {
         mem_desc_input_v>;
     using mat_out_t = brgemm_t::matAcc_t;
     static constexpr int split_k_cnt = k_w_ / k_iter_num;
-    static constexpr int barrier_count = brgemm_t::barrier_count;
+    static constexpr int barrier_count =
+        (param_S::barrier_count == 0) ? brgemm_t::barrier_count : 0;
+    static_assert(
+        (param_S::barrier_count == 0) ||
+            ((param_S::barrier_count > 0) &&
+             (param_S::n_x == n_x && param_S::n_y == n_y)),
+        "when periodic_sync_interval is enabled, expect (n_x, n_y) to "
+        "match");
+    static constexpr int barrier_offset =
+        (barrier_count == 0) ? 0 : param_P::barrier_count;
     static constexpr int slm_size = brgemm_t::slm_size;
   };
 

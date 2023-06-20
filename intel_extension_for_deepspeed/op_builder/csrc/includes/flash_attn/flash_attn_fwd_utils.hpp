@@ -16,12 +16,15 @@
 
 #pragma once
 
+#include <limits>
 #include "flash_attn_fwd_kernel.hpp"
 
 namespace xpu {
 namespace xetla {
 
 struct FLASH_ATTENTION_FWD_H128::utils {
+  static constexpr float inf = std::numeric_limits<float>::infinity();
+
   template <int dims = 1>
   class work_item;
 
@@ -61,6 +64,16 @@ struct FLASH_ATTENTION_FWD_H128::utils {
     template <typename rowvec_t, typename matAcc_t>
     __XETLA_API KERNEL_FUNC void operator()(rowvec_t& vec, matAcc_t& mat);
   };
+
+  template <typename tile_shape_t>
+  static __XETLA_API KERNEL_FUNC int check_diag_intersection(
+      utils::work_item<3>& ei);
+
+  template <typename tile_shape_t, typename matAcc_t>
+  static __XETLA_API KERNEL_FUNC void causal_mask(
+      utils::work_item<3>& ei,
+      uint32_t seq_len,
+      matAcc_t& mask);
 };
 
 template <int dims>
@@ -160,9 +173,22 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::
     // l_tilde_ij)
     gpu::xetla::xetla_vector<dtype, block_elems> diff_m =
         m_vec_blk - m_new_vec_blk;
+    if constexpr (enable_mask) {
+      // special handling for masking the whole row
+      gpu::xetla::xetla_mask<block_elems> m_mask = m_vec_blk <= -utils::inf;
+      m_mask |= m_new_vec_blk <= -utils::inf;
+      diff_m.merge(-utils::inf, m_mask);
+    }
     diff_m = gpu::xetla::xetla_exp<dtype, block_elems>(diff_m);
     gpu::xetla::xetla_vector<dtype, block_elems> diff_m_tilde =
         m_tilde_vec_blk - m_new_vec_blk;
+    if constexpr (enable_mask) {
+      // special handling for masking the whole row
+      gpu::xetla::xetla_mask<block_elems> m_tilde_mask =
+          m_tilde_vec_blk <= -utils::inf;
+      m_tilde_mask |= m_new_vec_blk <= -utils::inf;
+      diff_m_tilde.merge(-utils::inf, m_tilde_mask);
+    }
     diff_m_tilde = gpu::xetla::xetla_exp<dtype, block_elems>(diff_m_tilde);
     l_new_vec_blk = diff_m * l_vec_blk + diff_m_tilde * l_tilde_vec_blk;
   }
@@ -182,9 +208,22 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::
     // l_tilde_ij)
     gpu::xetla::xetla_vector<dtype, remain_elems> diff_m =
         m_vec_blk - m_new_vec_blk;
+    if constexpr (enable_mask) {
+      // special handling for masking the whole row
+      gpu::xetla::xetla_mask<block_elems> m_mask = m_vec_blk <= -utils::inf;
+      m_mask |= m_new_vec_blk <= -utils::inf;
+      diff_m.merge(-utils::inf, m_mask);
+    }
     diff_m = gpu::xetla::xetla_exp<dtype, remain_elems>(diff_m);
     gpu::xetla::xetla_vector<dtype, remain_elems> diff_m_tilde =
         m_tilde_vec_blk - m_new_vec_blk;
+    if constexpr (enable_mask) {
+      // special handling for masking the whole row
+      gpu::xetla::xetla_mask<block_elems> m_tilde_mask =
+          m_tilde_vec_blk <= -utils::inf;
+      m_tilde_mask |= m_new_vec_blk <= -utils::inf;
+      diff_m_tilde.merge(-utils::inf, m_tilde_mask);
+    }
     diff_m_tilde = gpu::xetla::xetla_exp<dtype, remain_elems>(diff_m_tilde);
     l_new_vec_blk = diff_m * l_vec_blk + diff_m_tilde * l_tilde_vec_blk;
   }
@@ -216,6 +255,12 @@ operator()(rowvec_t& new_vec, rowvec_t& vec, matAcc_t& mat) {
     auto new_vec_blk = new_vec.xetla_select<block_size_y, 1>(i * block_size_y);
     auto vec_blk = vec.xetla_select<block_size_y, 1>(i * block_size_y);
     auto diff_blk = vec_blk - new_vec_blk;
+    if constexpr (enable_mask) {
+      // special handling for masking the whole row
+      gpu::xetla::xetla_mask<block_size_y> v_mask = vec_blk <= -utils::inf;
+      v_mask |= new_vec_blk <= -utils::inf;
+      diff_blk.merge(-utils::inf, v_mask);
+    }
     diff_blk = gpu::xetla::xetla_exp<dtype, block_size_y>(diff_blk);
 #pragma unroll
     for (int j = 0; j < num_block_x; j++) {
@@ -239,6 +284,13 @@ operator()(rowvec_t& new_vec, rowvec_t& vec, matAcc_t& mat) {
     auto vec_blk =
         vec.xetla_select<remain_block_size_y, 1>(remain_block_start_y);
     auto diff_blk = vec_blk - new_vec_blk;
+    if constexpr (enable_mask) {
+      // special handling for masking the whole row
+      gpu::xetla::xetla_mask<remain_block_size_y> v_mask =
+          vec_blk <= -utils::inf;
+      v_mask |= new_vec_blk <= -utils::inf;
+      diff_blk.merge(-utils::inf, v_mask);
+    }
     diff_blk = gpu::xetla::xetla_exp<dtype, remain_block_size_y>(diff_blk);
 #pragma unroll
     for (int j = 0; j < num_block_x; j++) {
@@ -369,6 +421,136 @@ operator()(rowvec_t& vec, matAcc_t& mat) {
       for (int r = 0; r < remain_block_size_y; ++r) {
         auto mat_reg_row = reg_blk_2d.row(r);
         mat_reg_row = mat_reg_row / vec_blk[r];
+      }
+    }
+  }
+}
+
+template <typename tile_shape_t>
+__XETLA_API KERNEL_FUNC int FLASH_ATTENTION_FWD_H128::utils::
+    check_diag_intersection(utils::work_item<3>& ei) {
+  // returns 0 if has intersection with diagonal of S
+  // returns 1 if is in upper triangle
+  // returns -1 if is in lower triangle
+  int i_w = ei.get_group(1);
+  int j_w = ei.get_group(2);
+  constexpr int n_w = tile_shape_t::wg_tile_size_x;
+  constexpr int m_w = tile_shape_t::wg_tile_size_y;
+
+  {
+    // check intersection with diagonal
+    // 1. (j_w * B_c) <= i_w * B_r < (j_w * B_c + B_c)
+    // 1. (j_w * B_c) <= i_w * B_r + B_r - 1 < (j_w * B_c + B_c)
+    // 3. (i_w * B_r) <= j_w * B_c < (i_w * B_r + B_r)
+    // 4. (i_w * B_r) <= j_w * B_c + B_c - 1 < (i_w * B_r + B_r)
+    gpu::xetla::xetla_vector<int32_t, 4> lp(
+        {j_w * n_w, j_w * n_w, i_w * m_w, i_w * m_w});
+    gpu::xetla::xetla_vector<int32_t, 4> up(
+        {(j_w + 1) * n_w, (j_w + 1) * n_w, (i_w + 1) * m_w, (i_w + 1) * m_w});
+    gpu::xetla::xetla_vector<int32_t, 4> eg(
+        {i_w * m_w, (i_w + 1) * m_w - 1, j_w * n_w, (j_w + 1) * n_w - 1});
+    gpu::xetla::xetla_mask<4> lp_mask = lp <= eg;
+    gpu::xetla::xetla_mask<4> up_mask = eg < up;
+
+    // check if any condition is valid
+    lp_mask &= up_mask;
+    bool is_diag = lp_mask.any() > 0 ? true : false;
+    if (is_diag) {
+      return 0;
+    }
+  }
+  {
+    // checker lower triangle
+    // min(i_w * B_r + ii) > max(j_w * B_c + jj)
+    if (i_w * m_w > j_w * n_w + n_w - 1) {
+      return -1;
+    }
+  }
+  // check upper triangle
+  // max(i_w * B_r + ii) < min(j_w * B_c + jj)
+  if (i_w * m_w + m_w - 1 < j_w * n_w) {
+    return 1;
+  }
+  // should not reach here
+  return 0;
+}
+
+template <typename tile_shape_t, typename matAcc_t>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::causal_mask(
+    utils::work_item<3>& ei,
+    uint32_t seq_len,
+    matAcc_t& matM) {
+  // mask upper triangle excluding diagonal:
+  // M_ij[ii, jj] += -inf, for i_g < j_g
+  // where:
+  //   - shape(M_ij) = [m_s, n_s]
+  //   - i_g = g(f(ii, jj))[0]
+  //   - j_g = g(f(ii, jj))[1]
+  //   - f: (i, j) |-> x
+  //   - g: x |-> (i_g, j_g) = g3(g2(g1(x)))
+  //   - g1: x |-> (r_b, c_b, i_b, j_b)
+  //   - g2: (r_b, c_b, i_b, j_b) |-> (i_l, j_l) = (i_b * b_y + r_b, j_b * b_x +
+  //   c_b)
+  //   - g3: (i_l, j_l) |-> (i_g, j_g) = (i_w * m_w + i_s * m_s + i_l, j_w * n_w
+  //   + j_s * n_s + j_l)
+  //   - x: register linear index
+  int i_w = ei.get_group(1);
+  int j_w = ei.get_group(2);
+  constexpr int n_w = tile_shape_t::wg_tile_size_x;
+  constexpr int m_w = tile_shape_t::wg_tile_size_y;
+  typename tile_shape_t::work_group_t g(ei.get_local_linear_id());
+  int i_s = g.get_id() / tile_shape_t::wg_size_x;
+  int j_s = g.get_id() % tile_shape_t::wg_size_x;
+  constexpr int n_s = tile_shape_t::sg_tile_size_x;
+  constexpr int m_s = tile_shape_t::sg_tile_size_y;
+  constexpr uint32_t b_y = matAcc_t::block_size_y;
+  constexpr uint32_t b_x = matAcc_t::block_size_x;
+  constexpr uint32_t n_y = matAcc_t::num_block_y;
+  constexpr uint32_t n_x = matAcc_t::num_block_x;
+  constexpr uint32_t block_elems = matAcc_t::block_elems;
+
+  using dtype = matAcc_t::dtype;
+
+  int i_o = i_w * m_w + i_s * m_s;
+  int j_o = j_w * n_w + j_s * n_s;
+
+#pragma unroll
+  for (int i_b = 0; i_b < m_s / b_y; ++i_b) {
+#pragma unroll
+    for (int j_b = 0; j_b < n_x; j_b++) {
+      auto reg_blk_2d =
+          (matM.reg)
+              .xetla_select<block_elems, 1>((i_b * n_x + j_b) * block_elems)
+              .xetla_format<dtype, b_y, b_x>();
+#pragma unroll
+      for (int r_b = 0; r_b < b_y; ++r_b) {
+        auto mat_reg_row = reg_blk_2d.row(r_b);
+        uint32_t i_g = i_o + i_b * b_y + r_b;
+        gpu::xetla::xetla_vector<uint32_t, b_x> j_g =
+            gpu::xetla::xetla_vector_gen<uint32_t, b_x>(j_o + j_b * b_x, 1);
+        gpu::xetla::xetla_mask<b_x> mask = i_g < j_g;
+        mat_reg_row.merge(-utils::inf, mask);
+      }
+    }
+  }
+  static constexpr int b_tilde_y = m_s % b_y;
+  if constexpr (b_tilde_y != 0) {
+    static constexpr int remain_block_start_y = m_s - b_tilde_y;
+#pragma unroll
+    for (int j_b = 0; j_b < n_x; j_b++) {
+      auto reg_blk_2d =
+          (matM.reg)
+              .xetla_select<b_tilde_y * b_x, 1>(
+                  (remain_block_start_y * n_x + j_b) * block_elems)
+              .xetla_format<dtype, b_tilde_y, b_x>();
+#pragma unroll
+      for (int r_b = 0; r_b < b_tilde_y; ++r_b) {
+        auto mat_reg_row = reg_blk_2d.row(r_b);
+        uint32_t i_g = i_o + remain_block_start_y + r_b;
+        gpu::xetla::xetla_vector<uint32_t, b_x> j_g =
+            gpu::xetla::xetla_vector_gen<uint32_t, b_x>(j_o + j_b * b_x, 1);
+        gpu::xetla::xetla_mask<b_x> mask = i_g < j_g;
+        mat_reg_row.merge(-utils::inf, mask);
       }
     }
   }

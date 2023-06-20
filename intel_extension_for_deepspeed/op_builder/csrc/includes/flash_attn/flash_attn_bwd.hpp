@@ -50,7 +50,12 @@ bool flash_attn_bwd(
         false, // Indicate whether softmax result has been saved and not need to
                // be re-computed
     const bool is_causal = true, // Indicate whether do mask_fill before softmax
-    const void* causal_mask_ptr = nullptr) {
+    const void* causal_mask_ptr = nullptr
+    // debug
+    // const void p_ptr = nullptr,
+    // const void dp_ptr,
+    // const void ds_ptr
+) {
   using namespace cl::sycl;
   using namespace gpu::xetla;
   using namespace gpu::xetla::group;
