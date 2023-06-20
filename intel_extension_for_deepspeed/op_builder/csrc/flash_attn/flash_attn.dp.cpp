@@ -10,7 +10,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
                                           const uint32_t head_number,
                                           const uint32_t seqlens,
                                           const uint32_t head_size,
-                                          const torch::Tensor &drop_mask,
+                                          const c10::optional<torch::Tensor> &drop_mask,
                                           const float dropout_p,
                                           const float softmax_scale,
                                           const bool causal,
@@ -30,8 +30,11 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
     void *v_ptr = (void *)v.data_ptr();
     void *output_ptr = (void *)output.data_ptr();
     void *out_buffer_ptr = (void *)out_buffer.data_ptr();
-    void *drop_mask_ptr = (void *)drop_mask.data_ptr();
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
+    void *drop_mask_ptr = nullptr;
+    if(drop_mask.has_value()) {
+        drop_mask_ptr = (void *)drop_mask.value().data_ptr();
+    }
 
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
     FlashAttention _flash_attn = FlashAttention();
@@ -65,7 +68,7 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
                                           uint32_t head_number,
                                           uint32_t seqlens,
                                           uint32_t head_size,
-                                          const torch::Tensor &drop_mask,
+                                          const c10::optional<torch::Tensor> &drop_mask,
                                           const float dropout_p,
                                           const float softmax_scale,
                                           const bool causal,
@@ -83,8 +86,11 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
     void *dq_ptr = (void *)dq.data_ptr();
     void *dk_ptr = (void *)dk.data_ptr();
     void *dv_ptr = (void *)dv.data_ptr();
-    void *drop_mask_ptr = (void *)drop_mask.data_ptr();
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
+    void *drop_mask_ptr = nullptr;
+    if(drop_mask.has_value()) {
+        drop_mask_ptr = (void *)drop_mask.value().data_ptr();
+    }
     // void *grad_softmax_ptr = (void *)grad_softmax.data_ptr();
 
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();

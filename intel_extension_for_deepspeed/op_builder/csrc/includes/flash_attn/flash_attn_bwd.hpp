@@ -102,11 +102,11 @@ bool flash_attn_bwd(
   constexpr size_t subgroup_range_m = wg_tile_m / sg_tile_m;
   constexpr size_t subgroup_range_n = wg_tile_n / sg_tile_n;
 
-  std::cout << "group_num_x: " << group_range_n
-            << ", group_num_y: " << group_range_m
-            << ", group_num_z: " << batch_num << "\n";
-  std::cout << "group_size_x: " << subgroup_range_n
-            << ", group_size_y: " << subgroup_range_m << std::endl;
+  // std::cout << "group_num_x: " << group_range_n
+  //           << ", group_num_y: " << group_range_m
+  //           << ", group_num_z: " << batch_num << "\n";
+  // std::cout << "group_size_x: " << subgroup_range_n
+  //           << ", group_size_y: " << subgroup_range_m << std::endl;
   // cl::sycl::range<3> GroupRange{batch_num, group_range_m, group_range_n};
   cl::sycl::range<3> GroupRange{batch_num, 1, 1};
   cl::sycl::range<3> LocalRange{1, subgroup_range_m, subgroup_range_n};
