@@ -689,9 +689,33 @@ at::Tensor ds_vector_matmul(at::Tensor& input,
     return output;
 }
 
+#define DISPATCH_VECTOR_ADD(T_TYPE, C_TYPE)                                         \
+    if (a.scalar_type() == at::k##T_TYPE) {                                         \
+        launch_vector_add<C_TYPE>((C_TYPE*)(a.data_ptr()),                          \
+                                  (const C_TYPE*)(a.data_ptr()),                    \
+                                  (const C_TYPE*)(b.data_ptr()),                    \
+                                  gamma,                                            \
+                                  total_elems,                                      \
+                                  InferenceContext::Instance().GetCurrentStream()); \
+    }
+
+at::Tensor& _vector_add(at::Tensor& a, at::Tensor& b, float gamma)
+{
+    const int total_elems = a.numel();
+
+    DISPATCH_VECTOR_ADD(Float, float)
+    DISPATCH_VECTOR_ADD(Half, sycl::half)
+#ifdef BF16_AVAILABLE
+    DISPATCH_VECTOR_ADD(BFloat16, bf16)
+#endif
+
+    return a;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("layer_norm", &ds_layer_norm, "DeepSpeed layer norm (SYCL)");
+    m.def("_vector_add", &_vector_add, "DeepSpeed vector add (SYCL)");
     m.def(
         "_layer_norm_residual", &ds_layer_norm_residual, "DeepSpeed layer norm + residual (SYCL)");
 

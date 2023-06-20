@@ -67,3 +67,11 @@ void launch_fused_residual_ln(T* output,
                               int rows,
                               int elems_per_row,
                               sycl::queue stream);
+
+template <typename T>
+void launch_vector_add(T* out,
+                       const T* a,
+                       const T* b,
+                       float gamma,
+                       int num_elems,
+                       sycl::queue stream);
