@@ -4,9 +4,9 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #pragma once
 
-#include "conversion_utils.h"
-#include "compatible.h"
-#include "memory_access_utils.h"
+#include "conversion_utils.hpp"
+#include "compatible.hpp"
+#include "memory_access_utils.hpp"
 
 namespace reduce {
 

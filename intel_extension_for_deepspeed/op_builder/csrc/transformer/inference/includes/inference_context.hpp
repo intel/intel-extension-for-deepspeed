@@ -11,7 +11,7 @@
 #include <oneapi/mkl/rng/device.hpp>
 #include <vector>
 
-#include "compatible.h"
+#include "compatible.hpp"
 
 #define MEGABYTE (1024 * 1024)
 #define GIGABYTE (1024 * 1024 * 1024)

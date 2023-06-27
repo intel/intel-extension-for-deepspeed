@@ -1,5 +1,5 @@
 #pragma once
-#include "compatible.h"
+#include "compatible.hpp"
 
 template <typename T>
 void launch_attn_softmax_v2(T* vals,

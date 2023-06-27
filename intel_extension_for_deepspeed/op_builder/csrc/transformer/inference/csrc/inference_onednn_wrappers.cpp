@@ -1,6 +1,6 @@
 #include <ATen/ATen.h>
 #include "inference_onednn_wrappers.hpp"
-#include "inference_sycl_layers.h"
+#include "inference_sycl_layers.hpp"
 
 struct hash_pair {
   static size_t hash_combine( size_t lhs, size_t rhs ) {

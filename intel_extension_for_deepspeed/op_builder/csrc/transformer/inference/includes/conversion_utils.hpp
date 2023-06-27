@@ -7,7 +7,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 #include <stdint.h>
 #include <sycl/half_type.hpp>
 
-#include "compatible.h"
+#include "compatible.hpp"
 
 namespace conversion {
 

@@ -2,9 +2,9 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 */
 
-#include "compatible.h"
-#include "conversion_utils.h"
-#include "inference_sycl_layers.h"
+#include "compatible.hpp"
+#include "conversion_utils.hpp"
+#include "inference_sycl_layers.hpp"
 
 #define MAX_REG_SIZE 8
 #define minus_infinity -10000.0

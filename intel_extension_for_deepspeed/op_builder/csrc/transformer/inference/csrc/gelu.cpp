@@ -2,10 +2,10 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 */
 
-#include "compatible.h"
-#include "conversion_utils.h"
-#include "memory_access_utils.h"
-#include "inference_sycl_layers.h"
+#include "compatible.hpp"
+#include "conversion_utils.hpp"
+#include "memory_access_utils.hpp"
+#include "inference_sycl_layers.hpp"
 
 #define MAX_CAP 4
 #define MAX_SEQ 2048

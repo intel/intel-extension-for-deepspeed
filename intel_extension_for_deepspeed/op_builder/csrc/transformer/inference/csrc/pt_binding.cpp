@@ -1,11 +1,11 @@
 #include <torch/extension.h>
 #include <stdexcept>
 #include <vector>
-#include "compatible.h"
+#include "compatible.hpp"
 #include "inference_context.hpp"
 #include "inference_onednn_wrappers.hpp"
 #include "inference_onemkl_wrappers.hpp"
-#include "inference_sycl_layers.h"
+#include "inference_sycl_layers.hpp"
 
 // NOTE: This activation function type enum should be always in sync
 // with the python counterpart, otherwise the casting from python binding
