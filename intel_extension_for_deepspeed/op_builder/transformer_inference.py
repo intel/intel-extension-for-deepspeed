@@ -23,6 +23,7 @@ class InferenceBuilder(SYCLOpBuilder):
             sycl_kernel_path('csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp'),
             sycl_kernel_path('csrc/transformer/inference/csrc/inference_onemkl_wrappers.cpp'),
             sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/pointwise_ops.cpp'),
         ]
 
     def extra_ldflags(self):
