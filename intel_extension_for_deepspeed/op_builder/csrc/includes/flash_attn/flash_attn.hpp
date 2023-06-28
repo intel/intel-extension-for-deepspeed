@@ -9,6 +9,15 @@
 #endif
 
 #include <stddef.h>
+#include <ipex.h>
+#include <torch/extension.h>
+
+#define DPCPP_Q_SUBMIT(q, cgf, ...)                                          \
+  {                                                                          \
+    auto e = (q).submit((cgf), ##__VA_ARGS__);                               \
+    (q).throw_asynchronous();                                                \
+    xpu::profiler_record("dpcpp_kernel", e);                                 \                                            
+  }
 
 namespace xpu {
 namespace xetla {
@@ -110,6 +119,7 @@ public:
                  const float dropout_scale = 1.0,
                  const bool is_causal = true,
                  const bool store_softmax_out = false) {
+        RECORD_FUNCTION("flash_scaled_attn_bf16_fwd", c10::ArrayRef<c10::IValue>({}));
         return xpu::xetla::flash_scaled_attn_bf16_fwd(
             stream,
             output,
@@ -150,6 +160,7 @@ public:
                   const void* softmax_workspace_ptr,
                   const bool is_causal = true,
                   const bool store_softmax_out = false) {
+        RECORD_FUNCTION("flash_scaled_attn_bf16_bwd", c10::ArrayRef<c10::IValue>({}));
         return xpu::xetla::flash_scaled_attn_bf16_bwd(
             stream,
             dq,

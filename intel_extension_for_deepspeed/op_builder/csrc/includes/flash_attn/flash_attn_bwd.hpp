@@ -113,39 +113,73 @@ bool flash_attn_bwd(
   cl::sycl::nd_range<3> Range(GroupRange * LocalRange, LocalRange);
 
   try {
-    queue.submit([&](handler& cgh) {
+    // queue.submit([&](handler& cgh) {
+    //   cgh.parallel_for<class Test>(
+    //       Range, [=](nd_item<3> item) SYCL_ESIMD_KERNEL {
+    //         xetla_exec_item<3> ei(item);
+    //         static constexpr uint32_t slm_size = bc * br * sizeof(T);
+    //         xetla_local_init<slm_size>();
+
+    //         uint32_t batch_id = ei.get_group(0);
+    //         fmha_t fmha_bwd;
+
+    //         fmha_args_t args(
+    //             (T*)q_ptr + batch_id * qkv_batch_offset,
+    //             (T*)k_ptr + batch_id * qkv_batch_offset,
+    //             (T*)v_ptr + batch_id * qkv_batch_offset,
+    //             (T*)out + batch_id * qkv_batch_offset, // matO_ptr
+    //             (acc_T*)softmax_workspace_ptr +
+    //                 (batch_id * 2 + 1) * lm_batch_offset, // vecl_ptr,
+    //             (acc_T*)softmax_workspace_ptr +
+    //                 (batch_id * 2) * lm_batch_offset, // vecm_ptr,
+    //             (T*)gradout + batch_id * qkv_batch_offset,
+    //             (T*)dq + batch_id * qkv_batch_offset,
+    //             (T*)dk + batch_id * qkv_batch_offset,
+    //             (T*)dv + batch_id * qkv_batch_offset,
+    //             Sl,
+    //             Sl,
+    //             hs_rsqrt_scale
+    //             // matdP_ptr,
+    //             // matS_ptr,
+    //             // matP_ptr
+    //         );
+    //         fmha_bwd(ei, args);
+    //       });
+    // });
+    auto cgf = [&](handler& cgh) {
       cgh.parallel_for<class Test>(
-          Range, [=](nd_item<3> item) SYCL_ESIMD_KERNEL {
-            xetla_exec_item<3> ei(item);
-            static constexpr uint32_t slm_size = bc * br * sizeof(T);
-            xetla_local_init<slm_size>();
+        Range, [=](nd_item<3> item) SYCL_ESIMD_KERNEL {
+          xetla_exec_item<3> ei(item);
+          static constexpr uint32_t slm_size = bc * br * sizeof(T);
+          xetla_local_init<slm_size>();
 
-            uint32_t batch_id = ei.get_group(0);
-            fmha_t fmha_bwd;
+          uint32_t batch_id = ei.get_group(0);
+          fmha_t fmha_bwd;
 
-            fmha_args_t args(
-                (T*)q_ptr + batch_id * qkv_batch_offset,
-                (T*)k_ptr + batch_id * qkv_batch_offset,
-                (T*)v_ptr + batch_id * qkv_batch_offset,
-                (T*)out + batch_id * qkv_batch_offset, // matO_ptr
-                (acc_T*)softmax_workspace_ptr +
-                    (batch_id * 2 + 1) * lm_batch_offset, // vecl_ptr,
-                (acc_T*)softmax_workspace_ptr +
-                    (batch_id * 2) * lm_batch_offset, // vecm_ptr,
-                (T*)gradout + batch_id * qkv_batch_offset,
-                (T*)dq + batch_id * qkv_batch_offset,
-                (T*)dk + batch_id * qkv_batch_offset,
-                (T*)dv + batch_id * qkv_batch_offset,
-                Sl,
-                Sl,
-                hs_rsqrt_scale
-                // matdP_ptr,
-                // matS_ptr,
-                // matP_ptr
-            );
-            fmha_bwd(ei, args);
-          });
-    });
+          fmha_args_t args(
+              (T*)q_ptr + batch_id * qkv_batch_offset,
+              (T*)k_ptr + batch_id * qkv_batch_offset,
+              (T*)v_ptr + batch_id * qkv_batch_offset,
+              (T*)out + batch_id * qkv_batch_offset, // matO_ptr
+              (acc_T*)softmax_workspace_ptr +
+                  (batch_id * 2 + 1) * lm_batch_offset, // vecl_ptr,
+              (acc_T*)softmax_workspace_ptr +
+                  (batch_id * 2) * lm_batch_offset, // vecm_ptr,
+              (T*)gradout + batch_id * qkv_batch_offset,
+              (T*)dq + batch_id * qkv_batch_offset,
+              (T*)dk + batch_id * qkv_batch_offset,
+              (T*)dv + batch_id * qkv_batch_offset,
+              Sl,
+              Sl,
+              hs_rsqrt_scale
+              // matdP_ptr,
+              // matS_ptr,
+              // matP_ptr
+          );
+          fmha_bwd(ei, args);
+        });
+    };
+    DPCPP_Q_SUBMIT(queue, cgf);
     // gpu_event.wait();
     // prof.add_gpu_event(gpu_event);
   } catch (cl::sycl::exception const& e) {

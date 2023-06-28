@@ -45,7 +45,19 @@ static int flash_scaled_attn_bf16_fwd_run(
   P kernel(args);
   sycl::nd_range<3> nd_range = kernel.get_nd_range();
 
-  auto evt = queue.submit([&](sycl::handler& cgh) {
+  // auto evt = queue.submit([&](sycl::handler& cgh) {
+  //   cgh.parallel_for(nd_range, [=](sycl::nd_item<3> item) SYCL_ESIMD_KERNEL {
+  //     using namespace gpu::xetla;
+  //     using namespace gpu::xetla::group;
+  //     using namespace gpu::xetla::kernel;
+  //     using namespace gpu::xetla::subgroup;
+
+  //     xetla_exec_item<3> ei(item);
+  //     kernel.run(ei);
+  //   });
+  // });
+  // evt.wait();
+  auto cgf = [&](sycl::handler& cgh) {
     cgh.parallel_for(nd_range, [=](sycl::nd_item<3> item) SYCL_ESIMD_KERNEL {
       using namespace gpu::xetla;
       using namespace gpu::xetla::group;
@@ -55,8 +67,8 @@ static int flash_scaled_attn_bf16_fwd_run(
       xetla_exec_item<3> ei(item);
       kernel.run(ei);
     });
-  });
-  evt.wait();
+  };
+  DPCPP_Q_SUBMIT(queue, cgf);
 
   return 0;
 }
