@@ -4,7 +4,7 @@ Copyright 2022 The Microsoft DeepSpeed Team
 
 #pragma once
 
-#include "compatible.h"
+#include "compatible.hpp"
 
 /////////////////////////////// Memory Access Utils ///////////////////////////////
 namespace mem_access {

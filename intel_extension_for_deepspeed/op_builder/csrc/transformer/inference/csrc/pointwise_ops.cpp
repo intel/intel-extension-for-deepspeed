@@ -4,9 +4,9 @@
 // DeepSpeed Team
 
 #include <sycl/sycl.hpp>
-#include "conversion_utils.h"
-#include "compatible.h"
-#include "memory_access_utils.h"
+#include "conversion_utils.hpp"
+#include "compatible.hpp"
+#include "memory_access_utils.hpp"
 
 namespace pwise {
 constexpr int granularity = 16;

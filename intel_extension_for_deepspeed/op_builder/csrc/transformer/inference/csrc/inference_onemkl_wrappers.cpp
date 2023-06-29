@@ -1,6 +1,6 @@
 #include <ATen/ATen.h>
 #include "inference_onemkl_wrappers.hpp"
-#include "inference_sycl_layers.h"
+#include "inference_sycl_layers.hpp"
 
 
 template <typename T>

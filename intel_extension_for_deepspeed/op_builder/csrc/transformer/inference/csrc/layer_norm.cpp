@@ -2,11 +2,11 @@
 Copyright 2022 The Microsoft DeepSpeed Team
 */
 
-#include "compatible.h"
-#include "conversion_utils.h"
-#include "memory_access_utils.h"
-#include "reduction_utils.h"
-#include "inference_sycl_layers.h"
+#include "compatible.hpp"
+#include "conversion_utils.hpp"
+#include "memory_access_utils.hpp"
+#include "reduction_utils.hpp"
+#include "inference_sycl_layers.hpp"
 
 using rop = reduce::ROpType;
 

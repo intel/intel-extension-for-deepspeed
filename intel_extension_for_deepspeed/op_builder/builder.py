@@ -46,14 +46,14 @@ class SYCLOpBuilder(OpBuilder):
         return cxx_flags
 
     def extra_ldflags(self):
-        return ['-fPIC', '-Wl,-export-dynamic']
+        return ['-fPIC', '-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode"', '-Xs "-device pvc"', '-Wl,-export-dynamic']
 
     def fixed_aotflags(self):
         return ['-fsycl', '-fsycl-targets=spir64_gen', '-fsycl-max-parallel-link-jobs=8', '-Xs', "-options -cl-poison-unsupported-fp64-kernels,cl-intel-enable-auto-large-GRF-mode", '-Xs', "-device pvc"]
 
     def load(self, verbose=True):
         from deepspeed.git_version_info import installed_ops, torch_info  # noqa: F401
-        if self.name in installed_ops:
+        if installed_ops.get(self.name, False):
             return importlib.import_module(self.absolute_name())
         else:
             return self.jit_load(verbose)
@@ -134,7 +134,7 @@ def sycl_kernel_path(code_path):
         sycl_dir_path = os.path.join(os.path.dirname(sycl_link_path),
                                      "../../" + SYCL_KERNEL_PATH)
 
-        os.mkdir(sycl_dir_path)
+        os.makedirs(sycl_dir_path, exist_ok=True)
         os.symlink("../../" + SYCL_KERNEL_PATH, sycl_link_path, True)
         print("Create directory and link for sycl kernel:{}-->{}".format(
             sycl_link_path,
