@@ -15,4 +15,4 @@ For basic usage, we have provided 3 running recipes for 3.6 billion parameters, 
 
 * 3.6b:     ```bash <path-to-this-repo>/examples/run3.6b.sh```
 * 20b:      ```bash <path-to-this-repo>/examples/run20b.sh```
-* 175b:     ```bash <path-to-this-repo>/examples/run17b.sh```
+* 175b:     ```bash <path-to-this-repo>/examples/run175b.sh```
