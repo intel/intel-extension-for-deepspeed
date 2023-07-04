@@ -1,3 +1,4 @@
+
 #include "flash_attn.hpp"
 #include "flash_attn_bwd.hpp"
 
@@ -29,7 +30,26 @@ bool flash_scaled_attn_bf16_bwd(
     const bool is_casual, // Indicate whether do mask_fill before softmax
     const bool softmax_out_saved) {
   if (Hs == 128 && is_casual && !softmax_out_saved) {
-    return flash_attn_bwd<bf16, bf16, float, 128, 128>(
+    return flash_attn_bwd<kernel_traits<bf16, bf16, float, 128, 128>>(
+        queue,
+        dq,
+        dk,
+        dv,
+        grad_softmax,
+        out,
+        gradout,
+        Bs,
+        Hn,
+        Sl,
+        hs_rsqrt_scale,
+        q_ptr,
+        k_ptr,
+        v_ptr,
+        drop_mask_ptr,
+        dropout_scale,
+        softmax_workspace_ptr);
+  } else if (Hs == 96 && is_casual && !softmax_out_saved) {
+    return flash_attn_bwd<kernel_traits<bf16, bf16, float, 96, 128>>(
         queue,
         dq,
         dk,

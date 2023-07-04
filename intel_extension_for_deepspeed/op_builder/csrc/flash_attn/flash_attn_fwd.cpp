@@ -63,7 +63,6 @@ static int flash_scaled_attn_bf16_fwd_run(
       using namespace gpu::xetla::group;
       using namespace gpu::xetla::kernel;
       using namespace gpu::xetla::subgroup;
-
       xetla_exec_item<3> ei(item);
       kernel.run(ei);
     });
@@ -100,7 +99,68 @@ bool flash_scaled_attn_bf16_fwd(
     const bool store_softmax_out) {
   bool ret = false;
   if (Hs == 128) {
-    using P = xpu::xetla::FLASH_ATTENTION_FWD_H128;
+    using flash_attn_fwd_h128 =
+        xpu::xetla::FLASH_ATTENTION_FWD_PARAM::tuning_parameter_t<
+            gpu::xetla::bf16,
+            gpu::xetla::bf16,
+            gpu::xetla::bf16,
+            gpu::xetla::bf16,
+            float,
+            float,
+            float,
+            float,
+            float,
+            true,
+            true,
+            xpu::xetla::FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global,
+            32,
+            128,
+            128,
+            128,
+            64,
+            32,
+            128,
+            16>;
+    using P = xpu::xetla::FLASH_ATTENTION_FWD_IMPL<flash_attn_fwd_h128>;
+    using arguments_t = P::arguments_t;
+    P::dtype_q* ptr_q = reinterpret_cast<P::dtype_q*>(const_cast<void*>(q_ptr));
+    P::dtype_k* ptr_k = reinterpret_cast<P::dtype_k*>(const_cast<void*>(k_ptr));
+    P::dtype_v* ptr_v = reinterpret_cast<P::dtype_v*>(const_cast<void*>(v_ptr));
+    P::dtype_o* ptr_o =
+        reinterpret_cast<P::dtype_o*>(const_cast<void*>(output));
+    P::dtype_m* ptr_m =
+        reinterpret_cast<P::dtype_m*>(const_cast<void*>(softmax_workspace));
+    P::dtype_b* ptr_b =
+        reinterpret_cast<P::dtype_b*>(const_cast<void*>(out_buffer));
+    arguments_t args(
+        Bs, Hn, Sl, hs_rsqrt_scale, ptr_q, ptr_k, ptr_v, ptr_o, ptr_m, ptr_b);
+    flash_scaled_attn_bf16_fwd_run<P>(queue, args);
+
+    ret = true;
+  } else if (Hs == 96) {
+    using flash_attn_fwd_h96 =
+        xpu::xetla::FLASH_ATTENTION_FWD_PARAM::tuning_parameter_t<
+            gpu::xetla::bf16,
+            gpu::xetla::bf16,
+            gpu::xetla::bf16,
+            gpu::xetla::bf16,
+            float,
+            float,
+            float,
+            float,
+            float,
+            true,
+            true,
+            xpu::xetla::FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global,
+            32,
+            96,
+            128,
+            128,
+            64,
+            32,
+            128,
+            16>;
+    using P = xpu::xetla::FLASH_ATTENTION_FWD_IMPL<flash_attn_fwd_h96>;
     using arguments_t = P::arguments_t;
     P::dtype_q* ptr_q = reinterpret_cast<P::dtype_q*>(const_cast<void*>(q_ptr));
     P::dtype_k* ptr_k = reinterpret_cast<P::dtype_k*>(const_cast<void*>(k_ptr));

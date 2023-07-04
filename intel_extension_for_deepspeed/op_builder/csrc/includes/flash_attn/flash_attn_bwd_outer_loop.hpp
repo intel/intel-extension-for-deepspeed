@@ -26,6 +26,7 @@ template <
     typename gemm_brxd_block_tile_t,
     typename gemm_bcxd_block_tile_t,
     typename gemm_brxbc_block_tile_t,
+    bool debug = false,
     uint32_t accum_stride = 16,
     uint32_t prefetch_distance = 3,
     uint32_t periodic_sync_interval = 0>
@@ -49,7 +50,8 @@ struct flash_attention_bwd {
       mem_desc_l_m_t,
       gemm_brxbc_block_tile_t,
       gemm_brxd_block_tile_t,
-      gemm_bcxd_block_tile_t>;
+      gemm_bcxd_block_tile_t,
+      debug>;
   using inner_loop_arguments = typename fmha_bwd_inner_loop_t::arguments_t;
   using worker_scope_t = typename fmha_bwd_inner_loop_t::worker_scope_t;
 
@@ -71,9 +73,9 @@ struct flash_attention_bwd {
         uint32_t seq_q,
         uint32_t seq_k,
         float scale,
-        T* ptr_dP = nullptr,
-        T* ptr_s = nullptr, // debug
-        T* ptr_p = nullptr, // debug
+        T* ptr_p = nullptr,
+        T* ptr_dS = nullptr, // debug
+        T* ptr_dP = nullptr, // debug
         uint32_t matP_base = 0)
         : inner_loop_arguments(
               ptr_q,
@@ -89,9 +91,9 @@ struct flash_attention_bwd {
               seq_q,
               seq_k,
               scale,
-              ptr_dP,
-              ptr_s,
               ptr_p,
+              ptr_dS,
+              ptr_dP,
               matP_base){};
   };
 

@@ -74,7 +74,7 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
                                           const bool causal,
                                           const bool return_softmax,
                                           const torch::Tensor &softmax_res) {
-    torch::Tensor dq = torch::empty_like(q);
+    torch::Tensor dq = torch::zeros_like(q);
     torch::Tensor dk = torch::empty_like(k);
     torch::Tensor dv = torch::empty_like(v);
     // torch::Tensor grad_softmax = torch::empty({bs, head_number, seqlens, seqlens}, q.options());

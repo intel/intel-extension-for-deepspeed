@@ -22,11 +22,14 @@
 namespace xpu {
 namespace xetla {
 
-struct FLASH_ATTENTION_FWD_H128::utils {
+template <typename tuning_parameter_>
+struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils {
   static constexpr float inf = std::numeric_limits<float>::infinity();
 
   template <int dims = 1>
   class work_item;
+
+  using work_item3 = work_item<3>;
 
   template <int dims = 1>
   static __XETLA_API KERNEL_FUNC work_item<dims> make_work_item(
@@ -67,17 +70,18 @@ struct FLASH_ATTENTION_FWD_H128::utils {
 
   template <typename tile_shape_t>
   static __XETLA_API KERNEL_FUNC int check_diag_intersection(
-      utils::work_item<3>& ei);
+      utils::work_item3& ei);
 
   template <typename tile_shape_t, typename matAcc_t>
   static __XETLA_API KERNEL_FUNC void causal_mask(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t seq_len,
       matAcc_t& mask);
 };
 
+template <typename tuning_parameter_>
 template <int dims>
-class FLASH_ATTENTION_FWD_H128::utils::work_item {
+class FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::work_item {
  public:
   work_item() = default;
   explicit work_item(gpu::xetla::xetla_exec_item<dims>& ei)
@@ -118,27 +122,34 @@ class FLASH_ATTENTION_FWD_H128::utils::work_item {
   gpu::xetla::xetla_vector<uint32_t, dims> local_group_;
 };
 
+template <typename tuning_parameter_>
 template <int dims>
-__XETLA_API KERNEL_FUNC FLASH_ATTENTION_FWD_H128::utils::work_item<dims>
-FLASH_ATTENTION_FWD_H128::utils::make_work_item(
-    gpu::xetla::xetla_exec_item<dims>& ei) {
+__XETLA_API KERNEL_FUNC
+    FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::work_item<dims>
+    FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::make_work_item(
+        gpu::xetla::xetla_exec_item<dims>& ei) {
   return work_item<dims>(ei);
 }
 
+template <typename tuning_parameter_>
 __XETLA_API KERNEL_FUNC uint32_t
-FLASH_ATTENTION_FWD_H128::utils::matrix_size(uint32_t seq_len) {
+FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::matrix_size(
+    uint32_t seq_len) {
   return seq_len * H;
 }
 
+template <typename tuning_parameter_>
 __XETLA_API KERNEL_FUNC uint32_t
-FLASH_ATTENTION_FWD_H128::utils::factor_size(uint32_t seq_len) {
+FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::factor_size(
+    uint32_t seq_len) {
   return seq_len * 2;
 }
 
+template <typename tuning_parameter_>
 template <uint32_t block_elems>
 template <typename rowmax_t, typename rowsum_t>
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::
-    calculate_new_ml_op_t<block_elems>::operator()(
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    utils::calculate_new_ml_op_t<block_elems>::operator()(
         rowmax_t& m_new_vec,
         rowmax_t& m_tilde_vec,
         rowmax_t& m_vec,
@@ -229,9 +240,13 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::
   }
 }
 
+template <typename tuning_parameter_>
 template <typename rowvec_t, typename matAcc_t>
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::row_exp_mul_op_t::
-operator()(rowvec_t& new_vec, rowvec_t& vec, matAcc_t& mat) {
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    utils::row_exp_mul_op_t::operator()(
+        rowvec_t& new_vec,
+        rowvec_t& vec,
+        matAcc_t& mat) {
   // mat[i, :] *= exp(vec[i] - new_vec[i])
   static constexpr uint32_t tile_size_y = matAcc_t::tile_size_y;
   static constexpr uint32_t tile_size_x = matAcc_t::tile_size_x;
@@ -308,9 +323,10 @@ operator()(rowvec_t& new_vec, rowvec_t& vec, matAcc_t& mat) {
   }
 }
 
+template <typename tuning_parameter_>
 template <typename rowvec_t, typename matAcc_t>
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::row_mul_op_t::
-operator()(rowvec_t& vec, matAcc_t& mat) {
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    utils::row_mul_op_t::operator()(rowvec_t& vec, matAcc_t& mat) {
   // mat[i, :] *= vec[i]
   static constexpr uint32_t tile_size_y = matAcc_t::tile_size_y;
   static constexpr uint32_t tile_size_x = matAcc_t::tile_size_x;
@@ -367,9 +383,10 @@ operator()(rowvec_t& vec, matAcc_t& mat) {
   }
 }
 
+template <typename tuning_parameter_>
 template <typename rowvec_t, typename matAcc_t>
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::row_div_op_t::
-operator()(rowvec_t& vec, matAcc_t& mat) {
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    utils::row_div_op_t::operator()(rowvec_t& vec, matAcc_t& mat) {
   // mat[i, :] /= vec[i]
   static constexpr uint32_t tile_size_y = matAcc_t::tile_size_y;
   static constexpr uint32_t tile_size_x = matAcc_t::tile_size_x;
@@ -426,9 +443,10 @@ operator()(rowvec_t& vec, matAcc_t& mat) {
   }
 }
 
+template <typename tuning_parameter_>
 template <typename tile_shape_t>
-__XETLA_API KERNEL_FUNC int FLASH_ATTENTION_FWD_H128::utils::
-    check_diag_intersection(utils::work_item<3>& ei) {
+__XETLA_API KERNEL_FUNC int FLASH_ATTENTION_FWD_IMPL<
+    tuning_parameter_>::utils::check_diag_intersection(utils::work_item3& ei) {
   // returns 0 if has intersection with diagonal of S
   // returns 1 if is in upper triangle
   // returns -1 if is in lower triangle
@@ -475,11 +493,13 @@ __XETLA_API KERNEL_FUNC int FLASH_ATTENTION_FWD_H128::utils::
   return 0;
 }
 
+template <typename tuning_parameter_>
 template <typename tile_shape_t, typename matAcc_t>
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::utils::causal_mask(
-    utils::work_item<3>& ei,
-    uint32_t seq_len,
-    matAcc_t& matM) {
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    utils::causal_mask(
+        utils::work_item3& ei,
+        uint32_t seq_len,
+        matAcc_t& matM) {
   // mask upper triangle excluding diagonal:
   // M_ij[ii, jj] += -inf, for i_g < j_g
   // where:

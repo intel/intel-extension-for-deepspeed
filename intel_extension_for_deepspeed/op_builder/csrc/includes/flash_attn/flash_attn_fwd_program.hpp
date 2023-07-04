@@ -22,11 +22,12 @@
 namespace xpu {
 namespace xetla {
 
-struct FLASH_ATTENTION_FWD_H128::program {
-  static __XETLA_API KERNEL_FUNC void initialization(utils::work_item<3>& ei);
+template <typename tuning_parameter_>
+struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::program {
+  static __XETLA_API KERNEL_FUNC void initialization(utils::work_item3& ei);
 
   static __XETLA_API KERNEL_FUNC void calculate_S_ij(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t seq_len,
       param_S::mat_out_t& matS,
       dtype_q* ptr_q,
@@ -34,34 +35,34 @@ struct FLASH_ATTENTION_FWD_H128::program {
       float hs_rsqrt_scale);
 
   static __XETLA_API KERNEL_FUNC void calculate_mask(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t seq_len,
       param_S::mat_out_t& matM);
 
   static __XETLA_API KERNEL_FUNC void apply_mask(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t seq_len,
       param_S::mat_out_t& matS);
 
   static __XETLA_API KERNEL_FUNC void calculate_P_ij(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       param_S::mat_out_t& matS,
       param_P::rowmax_t& m_tilde_vec,
       param_P::rowsum_t& l_tilde_vec);
 
   static __XETLA_API KERNEL_FUNC void init_ml(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       param_P::rowmax_t& m_vec,
       param_P::rowsum_t& l_vec);
 
   static __XETLA_API KERNEL_FUNC void load_ml(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       dtype_m* ptr_m,
       param_P::rowmax_t& m_vec,
       param_P::rowsum_t& l_vec);
 
   static __XETLA_API KERNEL_FUNC void calculate_new_ml(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       param_P::rowmax_t& m_new_vec,
       param_P::rowmax_t& m_tilde_vec,
       param_P::rowmax_t& m_vec,
@@ -70,7 +71,7 @@ struct FLASH_ATTENTION_FWD_H128::program {
       param_P::rowsum_t& l_vec);
 
   static __XETLA_API KERNEL_FUNC void calculate_PV(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t batch_size,
       uint32_t seq_len,
       uint32_t T_r,
@@ -83,31 +84,31 @@ struct FLASH_ATTENTION_FWD_H128::program {
       param_P::rowmax_t& m_tilde_vec);
 
   static __XETLA_API KERNEL_FUNC void load_O(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       param_O::mat_out_t& matO,
       param_P::rowmax_t& m_new_vec,
       param_P::rowmax_t& m_vec);
 
   static __XETLA_API KERNEL_FUNC void update_O(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       param_O::mat_out_t& matO,
       param_O::mat_out_t& matO_new,
       param_P::rowsum_t& l_new_vec,
       param_P::rowsum_t& l_vec);
 
   static __XETLA_API KERNEL_FUNC void store_O(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       param_O::mat_out_t& matO);
 
   static __XETLA_API KERNEL_FUNC void store_ml(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       param_P::rowmax_t& m_vec,
       param_P::rowmax_t& m_new_vec,
       param_P::rowsum_t& l_vec,
       param_P::rowsum_t& l_new_vec);
 
   static __XETLA_API KERNEL_FUNC void store_P_ij(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t batch_size,
       uint32_t seq_len,
       uint32_t T_r,
@@ -116,7 +117,7 @@ struct FLASH_ATTENTION_FWD_H128::program {
       param_P::mat_out_t& matP);
 
   static __XETLA_API KERNEL_FUNC void store_global_O(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t batch_dim,
       uint32_t head_dim,
       uint32_t seq_len,
@@ -124,7 +125,7 @@ struct FLASH_ATTENTION_FWD_H128::program {
       param_O::mat_out_t& matO);
 
   static __XETLA_API KERNEL_FUNC void store_global_ml(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       dtype_m* ptr_m,
       param_P::factor_tile_t& m_store,
       param_P::factor_payload_t& m_payload,
@@ -132,7 +133,7 @@ struct FLASH_ATTENTION_FWD_H128::program {
       param_P::factor_payload_t& l_payload);
 
   static __XETLA_API KERNEL_FUNC void setup_ml_store(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t batch_size,
       uint32_t seq_len,
       uint32_t T_r,
@@ -144,7 +145,7 @@ struct FLASH_ATTENTION_FWD_H128::program {
       param_P::factor_payload_t& l_payload);
 
   static __XETLA_API KERNEL_FUNC void causal_skip(
-      utils::work_item<3>& ei,
+      utils::work_item3& ei,
       uint32_t batch_size,
       uint32_t seq_len,
       uint32_t T_r,
@@ -155,8 +156,9 @@ struct FLASH_ATTENTION_FWD_H128::program {
       param_P::rowsum_t& l_tilde_vec);
 };
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::initialization(
-    utils::work_item<3>& ei) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<
+    tuning_parameter_>::program::initialization(utils::work_item3& ei) {
   static constexpr uint32_t barrier_count =
       param_S::barrier_count + param_P::barrier_count + param_O::barrier_count;
   if constexpr (param_S::fine_tuning::periodic_sync_interval != 0) {
@@ -182,13 +184,15 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::initialization(
   gpu::xetla::xetla_local_init<slm_size>();
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_S_ij(
-    utils::work_item<3>& ei,
-    uint32_t seq_len,
-    param_S::mat_out_t& matS,
-    dtype_q* ptr_q,
-    dtype_k* ptr_k,
-    float hs_rsqrt_scale) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::calculate_S_ij(
+        utils::work_item3& ei,
+        uint32_t seq_len,
+        param_S::mat_out_t& matS,
+        dtype_q* ptr_q,
+        dtype_k* ptr_k,
+        float hs_rsqrt_scale) {
   // S_ij = Q_i @ K_j.T
   // where:
   //   - shape(Q_i)   = [B_r, H]
@@ -198,26 +202,29 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_S_ij(
   int start_m = ei.get_group(1) * param_S::m_w;
   int start_n = ei.get_group(2) * param_S::n_w;
   int start_k = 0;
-  param_S::mem_desc_input_q md_q(
+  typename param_S::mem_desc_input_q md_q(
       {ptr_q + batch_idx * utils::matrix_size(seq_len)},
       {H, seq_len, H},
       {start_k, start_m});
-  param_S::mem_desc_input_k md_k(
+  typename param_S::mem_desc_input_k md_k(
       {ptr_k + batch_idx * utils::matrix_size(seq_len)},
       {seq_len, H, H},
       {start_n, start_k});
-  param_S::brgemm_t matmul_op;
-  param_S::brgemm_t::arguments_t args(md_q, md_k, param_S::split_k_cnt);
-  param_S::brgemm_t::work_group_t g(ei.get_local_linear_id());
+  typename param_S::brgemm_t matmul_op;
+  typename param_S::brgemm_t::arguments_t args(
+      md_q, md_k, param_S::split_k_cnt);
+  typename param_S::brgemm_t::work_group_t g(ei.get_local_linear_id());
   matS.init(0);
   matmul_op(g, matS, args, 0, param_S::barrier_offset);
   matS.reg *= hs_rsqrt_scale;
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_mask(
-    utils::work_item<3>& ei,
-    uint32_t seq_len,
-    param_S::mat_out_t& matM) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::calculate_mask(
+        utils::work_item3& ei,
+        uint32_t seq_len,
+        param_S::mat_out_t& matM) {
   matM.init(0.0f);
   // 1. attention mask
   // TODO: not implemented at the moment
@@ -231,13 +238,15 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_mask(
   //   - i ∈ {0..T_r-1}
   //   - j ∈ {0..T_c-1}
   //   - k ∈ {0..seq_len-1}
-  utils::causal_mask<param_S::tile_shape>(ei, seq_len, matM);
+  utils::template causal_mask<typename param_S::tile_shape>(ei, seq_len, matM);
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::apply_mask(
-    utils::work_item<3>& ei,
-    uint32_t seq_len,
-    param_S::mat_out_t& matS) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::apply_mask(
+        utils::work_item3& ei,
+        uint32_t seq_len,
+        param_S::mat_out_t& matS) {
   typename param_S::mat_out_t matM;
   // TODO: currently supports causual mask only
   program::calculate_mask(ei, seq_len, matM);
@@ -245,17 +254,19 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::apply_mask(
   matS.reg += matM.reg;
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_P_ij(
-    utils::work_item<3>& ei,
-    param_S::mat_out_t& matS,
-    param_P::rowmax_t& m_tilde_vec,
-    param_P::rowsum_t& l_tilde_vec) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::calculate_P_ij(
+        utils::work_item3& ei,
+        param_S::mat_out_t& matS,
+        param_P::rowmax_t& m_tilde_vec,
+        param_P::rowsum_t& l_tilde_vec) {
   using mat_t = param_S::mat_out_t;
   using mat_dtype = mat_t::dtype;
   using vec_dtype = param_P::rowmax_t::element_type;
   static constexpr int vec_length = param_P::rowmax_t::length;
   static_assert(
-      std::is_same_v<vec_dtype, param_P::rowsum_t::element_type>,
+      std::is_same_v<vec_dtype, typename param_P::rowsum_t::element_type>,
       "dtype mismatch");
   static_assert(vec_length == param_P::rowsum_t::length, "vec_length mismatch");
   using mat_tile_shape = param_S::mat_tile_shape;
@@ -279,7 +290,8 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_P_ij(
     rowmax_t m_tilde_vec_thread =
         gpu::xetla::subgroup::tile_reduce<reduce_op_t, mat_t, mat_dtype, 1>(
             matS);
-    param_P::wg_reduce_max_t wg_reduce_max(j_s, nbarrier_id, slm_base_addr);
+    typename param_P::wg_reduce_max_t wg_reduce_max(
+        j_s, nbarrier_id, slm_base_addr);
     m_tilde_vec = wg_reduce_max(m_tilde_vec_thread);
   }
   // 2. P_ij = exp(S_ij - m_tilde_ij)
@@ -310,31 +322,37 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_P_ij(
     rowsum_t l_tilde_vec_thread =
         gpu::xetla::subgroup::tile_reduce<reduce_op_t, mat_t, mat_dtype, 1>(
             matP);
-    param_P::wg_reduce_sum_t wg_reduce_sum(j_s, nbarrier_id, slm_base_addr);
+    typename param_P::wg_reduce_sum_t wg_reduce_sum(
+        j_s, nbarrier_id, slm_base_addr);
     l_tilde_vec = wg_reduce_sum(l_tilde_vec_thread);
   }
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::init_ml(
-    utils::work_item<3>& ei,
-    param_P::rowmax_t& m_vec,
-    param_P::rowsum_t& l_vec) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::init_ml(
+        utils::work_item3& ei,
+        param_P::rowmax_t& m_vec,
+        param_P::rowsum_t& l_vec) {
   m_vec = -utils::inf;
   l_vec = 0.0f;
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::load_ml(
-    utils::work_item<3>& ei,
-    dtype_m* ptr_m,
-    param_P::rowmax_t& m_vec,
-    param_P::rowsum_t& l_vec) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::load_ml(
+        utils::work_item3& ei,
+        dtype_m* ptr_m,
+        param_P::rowmax_t& m_vec,
+        param_P::rowsum_t& l_vec) {
   // m_i, l_i is created and persists in register
   // storing the result to ptr_m is skipped to reduce memory read/write
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::
-    calculate_new_ml(
-        utils::work_item<3>& ei,
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::calculate_new_ml(
+        utils::work_item3& ei,
         param_P::rowmax_t& m_new_vec,
         param_P::rowmax_t& m_tilde_vec,
         param_P::rowmax_t& m_vec,
@@ -347,23 +365,26 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::
   //   - shape(m) = [B_r,]
   //   - shape(l) = [B_r,]
   static constexpr uint32_t block_elems = std::min({32, param_P::vec_length});
-  using calculate_new_ml_op_t = utils::calculate_new_ml_op_t<block_elems>;
+  using calculate_new_ml_op_t =
+      utils::template calculate_new_ml_op_t<block_elems>;
   calculate_new_ml_op_t max_sum_op;
   max_sum_op(m_new_vec, m_tilde_vec, m_vec, l_new_vec, l_tilde_vec, l_vec);
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_PV(
-    utils::work_item<3>& ei,
-    uint32_t batch_size,
-    uint32_t seq_len,
-    uint32_t T_r,
-    uint32_t T_c,
-    dtype_b* ptr_b,
-    param_O::mat_out_t& matO_new,
-    param_P::mat_out_t& matP,
-    dtype_v* ptr_v,
-    param_P::rowmax_t& m_new_vec,
-    param_P::rowmax_t& m_tilde_vec) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::calculate_PV(
+        utils::work_item3& ei,
+        uint32_t batch_size,
+        uint32_t seq_len,
+        uint32_t T_r,
+        uint32_t T_c,
+        dtype_b* ptr_b,
+        param_O::mat_out_t& matO_new,
+        param_P::mat_out_t& matP,
+        dtype_v* ptr_v,
+        param_P::rowmax_t& m_new_vec,
+        param_P::rowmax_t& m_tilde_vec) {
   // TODO: use slm for store
   // 1. depending on pv_buffer flag, store P_ij to either:
   //   - shared local memory (slm)
@@ -386,15 +407,17 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_PV(
         start_v_m + param_O::m_w > seq_len ? seq_len : start_v_m + param_O::m_w;
     uint32_t boundary_v_n =
         start_v_n + param_O::n_w > H ? H : start_v_n + param_O::n_w;
-    param_O::mem_desc_input_p md_p;
-    if constexpr (pv_buffer == pv_buffer_type::global) {
+    typename param_O::mem_desc_input_p md_p;
+    if constexpr (
+        pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global) {
       // use global memory for storing P_ij
       constexpr uint32_t buf_size = param_S::m_w * param_S::n_w;
       md_p.init(
           {ptr_b + (batch_idx * T_r + i_w) * buf_size},
           {param_S::n_w, param_S::m_w, param_S::n_w},
           {0, 0});
-    } else if constexpr (pv_buffer == pv_buffer_type::local) {
+    } else if constexpr (
+        pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::local) {
       // use shared local memory for storing P_ij
       dtype_p* slm_base_addr =
           reinterpret_cast<dtype_p*>(param_P::slm_base_addr);
@@ -404,13 +427,14 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_PV(
       // P_ij remains in register
       // TODO: to be implemented
     }
-    param_O::mem_desc_input_v md_v(
+    typename param_O::mem_desc_input_v md_v(
         {ptr_v + batch_idx * utils::matrix_size(seq_len)},
         {boundary_v_n, boundary_v_m, H},
         {start_v_n, start_v_m});
-    param_O::brgemm_t matmul_op;
-    param_O::brgemm_t::arguments_t args(md_p, md_v, param_O::split_k_cnt);
-    param_O::brgemm_t::work_group_t g(ei.get_local_linear_id());
+    typename param_O::brgemm_t matmul_op;
+    typename param_O::brgemm_t::arguments_t args(
+        md_p, md_v, param_O::split_k_cnt);
+    typename param_O::brgemm_t::work_group_t g(ei.get_local_linear_id());
     matO_new.init(0);
     matmul_op(g, matO_new, args, 0, param_O::barrier_offset);
   }
@@ -422,23 +446,27 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::calculate_PV(
   }
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::load_O(
-    utils::work_item<3>& ei,
-    param_O::mat_out_t& matO,
-    param_P::rowmax_t& m_new_vec,
-    param_P::rowmax_t& m_vec) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::load_O(
+        utils::work_item3& ei,
+        param_O::mat_out_t& matO,
+        param_P::rowmax_t& m_new_vec,
+        param_P::rowmax_t& m_vec) {
   // O_i_weighted = diag(exp(m_i - m_new_i)) @ O_i
   using row_exp_mul_op_t = utils::row_exp_mul_op_t;
   row_exp_mul_op_t row_exp_mul_op;
   row_exp_mul_op(m_new_vec, m_vec, matO);
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::update_O(
-    utils::work_item<3>& ei,
-    param_O::mat_out_t& matO,
-    param_O::mat_out_t& matO_new,
-    param_P::rowsum_t& l_new_vec,
-    param_P::rowsum_t& l_vec) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::update_O(
+        utils::work_item3& ei,
+        param_O::mat_out_t& matO,
+        param_O::mat_out_t& matO_new,
+        param_P::rowsum_t& l_new_vec,
+        param_P::rowsum_t& l_vec) {
   // 1. O_i_weighted_unnorm = diag(l_i) @ O_i_weighted
   {
     using row_mul_op_t = utils::row_mul_op_t;
@@ -455,20 +483,22 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::update_O(
   }
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_O(
-    utils::work_item<3>& ei,
-    param_O::mat_out_t& matO) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::store_O(utils::work_item3& ei, param_O::mat_out_t& matO) {
   // O_i is created and persists in register
   // storing the result to shared local memory is skipped to reduce memory
   // read/write
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_ml(
-    utils::work_item<3>& ei,
-    param_P::rowmax_t& m_vec,
-    param_P::rowmax_t& m_new_vec,
-    param_P::rowsum_t& l_vec,
-    param_P::rowsum_t& l_new_vec) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::store_ml(
+        utils::work_item3& ei,
+        param_P::rowmax_t& m_vec,
+        param_P::rowmax_t& m_new_vec,
+        param_P::rowsum_t& l_vec,
+        param_P::rowsum_t& l_new_vec) {
   // m_i, l_i are stored in register instead of shared local memory
   // 1. m_i = m_new_i
   m_vec = m_new_vec;
@@ -476,30 +506,34 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_ml(
   l_vec = l_new_vec;
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_P_ij(
-    utils::work_item<3>& ei,
-    uint32_t batch_size,
-    uint32_t seq_len,
-    uint32_t T_r,
-    uint32_t T_c,
-    dtype_b* ptr_b,
-    param_P::mat_out_t& matP) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::store_P_ij(
+        utils::work_item3& ei,
+        uint32_t batch_size,
+        uint32_t seq_len,
+        uint32_t T_r,
+        uint32_t T_c,
+        dtype_b* ptr_b,
+        param_P::mat_out_t& matP) {
   int batch_idx = ei.get_group(0);
   int i_w = ei.get_group(1);
   int j_w = ei.get_group(2);
   using mat_tile_shape = param_P::mat_tile_shape;
   using mat_worker_scope_t = mat_tile_shape::work_group_t;
   mat_worker_scope_t g(ei.get_local_linear_id());
-  param_P::mem_desc_output_p md_p;
+  typename param_P::mem_desc_output_p md_p;
 
-  if constexpr (pv_buffer == pv_buffer_type::global) {
+  if constexpr (
+      pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global) {
     // store P_ij from register to global memory
     constexpr uint32_t buf_size = param_S::m_w * param_S::n_w;
     md_p.init(
         {ptr_b + (batch_idx * T_r + i_w) * buf_size},
         {param_S::n_w, param_S::m_w, param_S::n_w},
         {0, 0});
-  } else if constexpr (pv_buffer == pv_buffer_type::local) {
+  } else if constexpr (
+      pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::local) {
     // store P_ij from register to shared local memory
     dtype_p* slm_base_addr = reinterpret_cast<dtype_p*>(param_P::slm_base_addr);
     md_p.init(
@@ -508,28 +542,32 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_P_ij(
     // P_ij remains in register
     return;
   }
-  param_P::epilogue_t epilogue;
+  typename param_P::epilogue_t epilogue;
   epilogue(g, matP, md_p);
 
-  if constexpr (pv_buffer == pv_buffer_type::global) {
+  if constexpr (
+      pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global) {
     gpu::xetla::xetla_fence<gpu::xetla::memory_kind::untyped_global>();
-  } else if constexpr (pv_buffer == pv_buffer_type::local) {
+  } else if constexpr (
+      pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::local) {
     gpu::xetla::xetla_fence<gpu::xetla::memory_kind::shared_local>();
   }
-  param_P::store_nbarrier_t nbarrier;
+  typename param_P::store_nbarrier_t nbarrier;
   nbarrier.init_nbarrier(
       param_P::local_store_barrier_offset,
       gpu::xetla::nbarrier_role::producer_consumer);
   nbarrier.arrive_wait();
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_global_O(
-    utils::work_item<3>& ei,
-    uint32_t batch_dim,
-    uint32_t head_dim,
-    uint32_t seq_len,
-    dtype_o* ptr_o,
-    param_O::mat_out_t& matO) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::store_global_O(
+        utils::work_item3& ei,
+        uint32_t batch_dim,
+        uint32_t head_dim,
+        uint32_t seq_len,
+        dtype_o* ptr_o,
+        param_O::mat_out_t& matO) {
   // const uint32_t B = batch_dim;
   // const uint32_t N = head_dim;
   // const uint32_t F = seq_len;
@@ -554,7 +592,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_global_O(
   // // transpose 8 * 16 tile and store to global
 
   // for (uint32_t j = 0; j < tile_size_y; ++j, ++f) {
-  //     // TODO: vairiable align with FLASH_ATTENTION_FWD_H128
+  //     // TODO: vairiable align with FLASH_ATTENTION_FWD_IMPL
   //     uint32_t dst_offset = b * N * F * H + n * F * H + f * H + h;
   //     out_reg = matO.reg.xetla_select<tile_size_x, 1>(j * tile_size_x);
   //     gpu::xetla::xetla_fill_tdesc<dtype_o, tile_size_x /*, 1, 1*/>(
@@ -584,20 +622,22 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_global_O(
       {start_n, start_m});
   using epilogue_t = gpu::xetla::group::epilogue_t<
       gpu::xetla::group::epilogue_policy_default<gpu::xetla::gpu_arch::Xe>,
-      param_O::tile_shape,
+      typename param_O::tile_shape,
       mem_desc_output_t>;
   epilogue_t epilogue;
-  param_O::brgemm_t::work_group_t g(ei.get_local_linear_id());
+  typename param_O::brgemm_t::work_group_t g(ei.get_local_linear_id());
   epilogue(g, matO, md_dst);
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_global_ml(
-    utils::work_item<3>& ei,
-    dtype_m* ptr_m,
-    param_P::factor_tile_t& m_store,
-    param_P::factor_payload_t& m_payload,
-    param_P::factor_tile_t& l_store,
-    param_P::factor_payload_t& l_payload) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::store_global_ml(
+        utils::work_item3& ei,
+        dtype_m* ptr_m,
+        param_P::factor_tile_t& m_store,
+        param_P::factor_payload_t& m_payload,
+        param_P::factor_tile_t& l_store,
+        param_P::factor_payload_t& l_payload) {
   using mat_tile_shape = param_S::mat_tile_shape;
   using mat_worker_scope_t = mat_tile_shape::work_group_t;
   mat_worker_scope_t g(ei.get_local_linear_id());
@@ -614,17 +654,19 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::store_global_ml(
       l_store, l_payload);
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::setup_ml_store(
-    utils::work_item<3>& ei,
-    uint32_t batch_size,
-    uint32_t seq_len,
-    uint32_t T_r,
-    uint32_t T_c,
-    uint32_t B_r,
-    uint32_t B_c,
-    dtype_m* ptr_m,
-    param_P::factor_payload_t& m_payload,
-    param_P::factor_payload_t& l_payload) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::setup_ml_store(
+        utils::work_item3& ei,
+        uint32_t batch_size,
+        uint32_t seq_len,
+        uint32_t T_r,
+        uint32_t T_c,
+        uint32_t B_r,
+        uint32_t B_c,
+        dtype_m* ptr_m,
+        param_P::factor_payload_t& m_payload,
+        param_P::factor_payload_t& l_payload) {
   // M[i] = m_i
   // L[i] = l_i
   // where:
@@ -648,7 +690,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::setup_ml_store(
   static constexpr uint32_t vec_length = param_P::vec_length;
 
   uint32_t factor_size = utils::factor_size(seq_len);
-  param_P::mem_desc_output_m md_m(
+  typename param_P::mem_desc_output_m md_m(
       {ptr_m + batch_idx * factor_size}, {B_r, T_r, B_r}, {0, i_w});
 
   m_payload.init(md_m);
@@ -657,20 +699,23 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::setup_ml_store(
   l_payload.update_tdesc(i_s * vec_length + T_r * B_r);
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::program::causal_skip(
-    utils::work_item<3>& ei,
-    uint32_t batch_size,
-    uint32_t seq_len,
-    uint32_t T_r,
-    uint32_t T_c,
-    dtype_b* ptr_b,
-    param_S::mat_out_t& matS,
-    param_P::rowmax_t& m_tilde_vec,
-    param_P::rowsum_t& l_tilde_vec) {
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::causal_skip(
+        utils::work_item3& ei,
+        uint32_t batch_size,
+        uint32_t seq_len,
+        uint32_t T_r,
+        uint32_t T_c,
+        dtype_b* ptr_b,
+        param_S::mat_out_t& matS,
+        param_P::rowmax_t& m_tilde_vec,
+        param_P::rowsum_t& l_tilde_vec) {
   // skip calculating S_ij and skip m_i, l_i, O_i update
 }
 
-__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::run(
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
     gpu::xetla::xetla_exec_item<3>& ei) const {
   auto uei = utils::make_work_item(ei);
 
@@ -713,7 +758,8 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_H128::run(
     {
       if constexpr (is_causal) {
         // TODO: currently supports causal mask only
-        int t = utils::check_diag_intersection<param_S::tile_shape>(uei);
+        int t = utils::template check_diag_intersection<
+            typename param_S::tile_shape>(uei);
         if (t > 0) {
           // causal mask applied, but S_ij is in upper triangle
           program::causal_skip(

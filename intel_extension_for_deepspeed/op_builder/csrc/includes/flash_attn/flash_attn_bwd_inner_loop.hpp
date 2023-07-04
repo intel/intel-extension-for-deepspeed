@@ -35,6 +35,7 @@ template <
     typename gemm_brxbc_block_tile_t,
     typename gemm_brxd_block_tile_t,
     typename gemm_bcxd_block_tile_t,
+    bool debug = false,
     bool is_casual = true,
     uint32_t accum_stride = 16,
     uint32_t prefetch_distance = 3,
@@ -203,7 +204,6 @@ struct fmha_block_t {
     T* ptr_v;
     T* ptr_o;
     T* ptr_p; // debug
-    T* ptr_s;
     acc_T* ptr_l;
     acc_T* ptr_m;
     T* ptr_dO;
@@ -211,7 +211,7 @@ struct fmha_block_t {
     T* ptr_dK;
     T* ptr_dV;
     T* ptr_dP; // TODO: delete
-
+    T* ptr_dS;
     uint32_t matP_base = 0;
 
     arguments_t(){};
@@ -229,9 +229,9 @@ struct fmha_block_t {
         uint32_t seq_q,
         uint32_t seq_k,
         float scale,
-        T* ptr_dP = nullptr,
-        T* ptr_s = nullptr, // debug
-        T* ptr_p = nullptr, // debug
+        T* ptr_p = nullptr,
+        T* ptr_dS = nullptr, // debug
+        T* ptr_dP = nullptr, // debug
         uint32_t matP_base = 0)
         : ptr_q(ptr_q),
           ptr_k(ptr_k),
@@ -246,10 +246,9 @@ struct fmha_block_t {
           seq_q(seq_q),
           seq_k(seq_k),
           scale(scale),
-          ptr_dP(ptr_dP) // TODO: delete , just for debug
-          ,
-          ptr_s(ptr_s),
-          ptr_p(ptr_p),
+          ptr_p(ptr_p), // TODO: delete , just for debug
+          ptr_dS(ptr_dS),
+          ptr_dP(ptr_dP),
           matP_base(matP_base){};
     uint32_t seq_q;
     uint32_t seq_k;
@@ -436,11 +435,20 @@ struct fmha_block_t {
           {start_n_Tr + brgemm_brxd_t::get_matC_offset_x(g),
            start_m_Tr + brgemm_brxd_t::get_matC_offset_y(g)});
 
+      mem_desc_dQ.init(
+          args.ptr_dQ,
+          {boundary_n_Tr, boundary_m_Tr, args.head_size},
+          {start_n_Tr + brgemm_brxd_t::get_matC_offset_x(g),
+           start_m_Tr + brgemm_brxd_t::get_matC_offset_y(g)});
+
       tile_payload_Tr_1.init(mem_desc_dO);
       tile_load(mat_dO, tile_payload_Tr_1);
 
       tile_payload_Tr.init(mem_desc_o);
       tile_load(mat_O, tile_payload_Tr);
+
+      tile_payload_Tr.init(mem_desc_dQ);
+      tile_load(mat_dQ, tile_payload_Tr);
 
       // S𝑖𝑗 = 𝜏Q𝑖K𝑇𝑗
       {
@@ -484,9 +492,13 @@ struct fmha_block_t {
       /****************DROP_OUT elemwise opertation**************/
 
       /****************elemwise opertation******************/
-      // mem_desc_c.init(args.ptr_p, {boundary_n_rc, boundary_m_rc,
-      // /*gemm_p_block_tile_t::blocked_N*/uint32_t(args.seq_k)}, {start_n_rc,
-      // start_m_rc}); epilogue(g, matAcc_p, mem_desc_c);
+      if (debug && args.ptr_p != nullptr) {
+        mem_desc_c.init(
+            args.ptr_p,
+            {boundary_n_rc, boundary_m_rc, uint32_t(args.seq_k)},
+            {start_n_rc, start_m_rc});
+        epilogue(g, matAcc_p, mem_desc_c);
+      }
       // transpose P in slm
       {
         mem_desc_p.init(
@@ -525,9 +537,13 @@ struct fmha_block_t {
             gemm_brxbc_block_tile_t::inner_loop_count);
         brgemm_brxbc(g, matAcc_dP, brgemm_brxbc_args);
       }
-      // mem_desc_c.init(args.ptr_s, {boundary_n_rc, boundary_m_rc,
-      // /*gemm_p_block_tile_t::blocked_N*/uint32_t(args.seq_k)}, {start_n_rc,
-      // start_m_rc}); epilogue(g, matAcc_dP, mem_desc_c);
+      if (debug && args.ptr_dP != nullptr) {
+        mem_desc_c.init(
+            args.ptr_dP,
+            {boundary_n_rc, boundary_m_rc, uint32_t(args.seq_k)},
+            {start_n_rc, start_m_rc});
+        epilogue(g, matAcc_dP, mem_desc_c);
+      }
       /**************Dropout bwd elemwise multiply*****************/
       { // D_i= rowsum(dO_i * O_i)
         // TODO:: just support wg_tile_n = d;
@@ -539,13 +555,13 @@ struct fmha_block_t {
 
         uint32_t nbarrier_id = /*nbarrier_base*/ 0 + sg_idy;
         uint32_t slm_base_addr = /*slm_base*/ 0 +
-            sg_idy * tile_shape_brxbc::wg_size_x *
-                tile_shape_brxbc::sg_tile_size_y * sizeof(acc_T);
+            sg_idy * tile_shape_brxd::wg_size_x *
+                tile_shape_brxd::sg_tile_size_y * sizeof(acc_T);
 
-        xetla_vector<acc_T, tile_shape_brxbc::sg_tile_size_y> local_sum =
+        xetla_vector<acc_T, tile_shape_brxd::sg_tile_size_y> local_sum =
             tile_reduce<reduce_op::sum, matAcc_brxd_t, acc_T, 1>(matAcc_D);
         wg_reduce_sum_t wg_reduce_sum(sg_idx, nbarrier_id, slm_base_addr);
-        xetla_vector<acc_T, tile_shape_brxbc::sg_tile_size_y> group_sum =
+        xetla_vector<acc_T, tile_shape_brxd::sg_tile_size_y> group_sum =
             wg_reduce_sum(local_sum);
         // dS_ij = P_ij*(dP_ij-D_ij)
         matAcc_D.init(0);
@@ -553,9 +569,13 @@ struct fmha_block_t {
         matAcc_dP.reg = (matAcc_dP.reg + matAcc_D.reg) * matAcc_p.reg;
         // nbarrier.arrive_wait();
       }
-      // mem_desc_c.init({args.ptr_dP}, {boundary_n_rc, boundary_m_rc,
-      // /*gemm_p_block_tile_t::blocked_N*/uint32_t(args.seq_k)}, {start_n_rc,
-      // start_m_rc}); epilogue(g, matAcc_dP, mem_desc_c);
+      if (debug && args.ptr_dS != nullptr) {
+        mem_desc_c.init(
+            args.ptr_dS,
+            {boundary_n_rc, boundary_m_rc, uint32_t(args.seq_k)},
+            {start_n_rc, start_m_rc});
+        epilogue(g, matAcc_dP, mem_desc_c);
+      }
 
       { // store dP to local
         mem_desc_p.init(
@@ -567,17 +587,9 @@ struct fmha_block_t {
       mem_desc_p.init(
           args.matP_base, {wg_tile_k_Tr, wg_tile_m_Tr, wg_tile_k_Tr}, {0, 0});
 
+      matAcc_dQ.init(0);
       { // dQ_i = dQ_i + 𝜏dS_ij x K_j
         // TODO: mat_dQ.reg = /*𝜏*/matAcc_dQ.reg + mat_dQ.reg;
-        mem_desc_dQ.init(
-            args.ptr_dQ,
-            {boundary_n_Tr, boundary_m_Tr, gemm_brxd_block_tile_t::blocked_N},
-            {start_n_Tr + brgemm_brxd_t::get_matC_offset_x(g),
-             start_m_Tr + brgemm_brxd_t::get_matC_offset_y(g)});
-        tile_payload_Tr.init(mem_desc_dQ);
-        tile_load(mat_dQ, tile_payload_Tr);
-
-        matAcc_dQ.init(0);
         brgemm_brxd_args.init(
             mem_desc_p, mem_desc_k, gemm_brxd_block_tile_t::inner_loop_count);
         brgemm_brxd(g, matAcc_dQ, brgemm_brxd_args);
@@ -587,6 +599,7 @@ struct fmha_block_t {
             {boundary_n_Tr, boundary_m_Tr, gemm_brxd_block_tile_t::blocked_N},
             {start_n_Tr, start_m_Tr});
         epilogue(g, matAcc_dQ, mem_desc_c);
+        __esimd_barrier();
       }
       { // transpose dP in slm
         mem_desc_p.init(

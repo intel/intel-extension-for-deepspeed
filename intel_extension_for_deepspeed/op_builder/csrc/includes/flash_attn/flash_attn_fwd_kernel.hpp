@@ -21,46 +21,79 @@
 namespace xpu {
 namespace xetla {
 
-class FLASH_ATTENTION_FWD_H128 {
+class FLASH_ATTENTION_FWD_PARAM {
  public:
-  using dtype_q = gpu::xetla::bf16;
-  using dtype_k = gpu::xetla::bf16;
-  using dtype_v = gpu::xetla::bf16;
-  using dtype_o = gpu::xetla::bf16;
-  // using dtype_q = float;
-  // using dtype_k = float;
-  // using dtype_v = float;
-  // using dtype_o = float;
-  using dtype_m = float;
-  using dtype_b = float;
-
-  using dtype_acc = float;
-  using dtype_s = dtype_acc;
-  using dtype_p = dtype_acc;
-
-  // hidden size per head
-  static constexpr uint32_t H = 128;
-
   enum class pv_buffer_type { global, local, reg };
+  template <
+      typename dtype_q_ = gpu::xetla::bf16,
+      typename dtype_k_ = gpu::xetla::bf16,
+      typename dtype_v_ = gpu::xetla::bf16,
+      typename dtype_o_ = gpu::xetla::bf16,
+      typename dtype_m_ = float,
+      typename dtype_b_ = float,
+      typename dtype_acc_ = float,
+      typename dtype_s_ = float,
+      typename dtype_p_ = float,
+      bool is_causal_ = true,
+      bool enable_mask_ = true,
+      pv_buffer_type pv_buffer_ = pv_buffer_type::global,
+      int thread_num_ = 32,
+      uint32_t H_ = 128,
+      int B_r_ = 128,
+      int B_c_ = 128,
+      int matS_n_s_ = 64,
+      int matS_k_s_ = 32,
+      int matO_n_w_ = 128,
+      int matO_k_s_ = 16>
+  struct tuning_parameter_t {
+    using dtype_q = dtype_q_;
+    using dtype_k = dtype_k_;
+    using dtype_v = dtype_v_;
+    using dtype_o = dtype_o_;
+    using dtype_m = dtype_m_;
+    using dtype_b = dtype_b_;
 
-  struct tuning_parameter {
-    static constexpr bool is_causal = true;
+    using dtype_acc = dtype_acc_;
+    using dtype_s = dtype_s_;
+    using dtype_p = dtype_p_;
+
+    static constexpr bool is_causal = is_causal_;
     static constexpr bool enable_mask = is_causal;
     // use global memory ptr_b for storing P_ij
     // slm version WIP
     // register version WIP
-    static constexpr pv_buffer_type pv_buffer = pv_buffer_type::global;
+    static constexpr pv_buffer_type pv_buffer = pv_buffer_;
 
-    static constexpr int thread_num = 32;
+    static constexpr int thread_num = thread_num_;
 
-    static constexpr int B_r = 128;
-    static constexpr int B_c = 128;
+    // hidden size per head
+    static constexpr uint32_t H = H_;
+    static constexpr int B_r = B_r_;
+    static constexpr int B_c = B_c_;
 
-    static constexpr int matS_n_s = B_c / 2;
-    static constexpr int matS_k_s = 32;
+    static constexpr int matS_n_s = matS_n_s_;
+    static constexpr int matS_k_s = matS_k_s_;
 
-    static constexpr int matO_k_s = 16;
+    static constexpr int matO_n_w = matO_n_w_;
+    static constexpr int matO_k_s = matO_k_s_;
   };
+};
+
+template <typename tuning_parameter_>
+class FLASH_ATTENTION_FWD_IMPL {
+ public:
+  using tuning_parameter = tuning_parameter_;
+
+  using dtype_q = tuning_parameter::dtype_q;
+  using dtype_k = tuning_parameter::dtype_k;
+  using dtype_v = tuning_parameter::dtype_v;
+  using dtype_o = tuning_parameter::dtype_o;
+  using dtype_m = tuning_parameter::dtype_m;
+  using dtype_b = tuning_parameter::dtype_b;
+
+  using dtype_acc = tuning_parameter::dtype_acc;
+  using dtype_s = tuning_parameter::dtype_s;
+  using dtype_p = tuning_parameter::dtype_p;
 
   struct arguments_t {
     const uint32_t batch_dim;
@@ -99,10 +132,13 @@ class FLASH_ATTENTION_FWD_H128 {
           ptr_b(ptr_b_){};
   };
 
+  // hidden size per head
+  static constexpr uint32_t H = tuning_parameter::H;
   static constexpr int thread_num = tuning_parameter::thread_num;
   static constexpr int is_causal = tuning_parameter::is_causal;
   static constexpr int enable_mask = tuning_parameter::enable_mask;
-  static constexpr pv_buffer_type pv_buffer = tuning_parameter::pv_buffer;
+  static constexpr FLASH_ATTENTION_FWD_PARAM::pv_buffer_type pv_buffer =
+      tuning_parameter::pv_buffer;
   static constexpr int B_r = tuning_parameter::B_r;
   static constexpr int B_c = tuning_parameter::B_c;
   const uint32_t batch_dim;
@@ -121,7 +157,7 @@ class FLASH_ATTENTION_FWD_H128 {
   const uint32_t t_y;
   const uint32_t t_x;
 
-  explicit FLASH_ATTENTION_FWD_H128(arguments_t& args)
+  explicit FLASH_ATTENTION_FWD_IMPL(arguments_t& args)
       : batch_dim(args.batch_dim),
         head_dim(args.head_dim),
         batch_size(args.batch_size),
@@ -272,7 +308,7 @@ class FLASH_ATTENTION_FWD_H128 {
 
     static constexpr uint32_t slm_base_addr = 0;
     using mem_desc_output_p = std::conditional_t<
-        pv_buffer == pv_buffer_type::global,
+        pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global,
         gpu::xetla::mem_desc_t<
             dtype_b,
             gpu::xetla::mem_layout::row_major,
@@ -291,7 +327,7 @@ class FLASH_ATTENTION_FWD_H128 {
     static constexpr int local_store_barrier_offset =
         param_S::barrier_count + reduce_barrier_count;
     static constexpr int local_store_slm_size = param_S::n_x * param_S::n_y *
-        mat_type::tile_elems * sizeof(mat_type::dtype);
+        mat_type::tile_elems * sizeof(typename mat_type::dtype);
 
     static constexpr int barrier_count =
         reduce_barrier_count + local_store_barrier_count;
@@ -354,8 +390,11 @@ class FLASH_ATTENTION_FWD_H128 {
     static constexpr int slm_size = brgemm_t::slm_size;
   };
 
-  using param_O =
-      param_O_t<param_S::m_w, H, param_S::n_w, tuning_parameter::matO_k_s>;
+  using param_O = param_O_t<
+      param_S::m_w,
+      tuning_parameter::matO_n_w,
+      param_S::n_w,
+      tuning_parameter::matO_k_s>;
 
   struct utils;
   struct program;

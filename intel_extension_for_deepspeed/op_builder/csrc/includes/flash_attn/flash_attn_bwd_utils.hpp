@@ -280,7 +280,9 @@ struct casual_mask {
     const int start_col = n_idx * bc + sg_idx * sg_tile_n;
     const int start_row = m_idx * br + sg_idy * sg_tile_m;
 
-    // TODO:: casual mask direction?
+    if (start_row > start_col + sg_tile_n - 1) {
+      return;
+    }
 
     for (int ii = 0; ii < sg_tile_m; ii++) {
       int cur_row = start_row + ii;
