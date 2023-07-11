@@ -10,9 +10,9 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
                                           const uint32_t head_number,
                                           const uint32_t seqlens,
                                           const uint32_t head_size,
-                                          const c10::optional<torch::Tensor> &drop_mask,
-                                          const float dropout_p,
                                           const float softmax_scale,
+                                          const float dropout_p,
+                                          const uint64_t dropout_rand_seed,
                                           const bool causal,
                                           const bool return_softmax) {
     torch::Tensor output = torch::empty_like(q);
@@ -24,6 +24,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
     else {
         softmax_res = torch::empty({bs * head_number, 2, seqlens}, q.options()).to(at::kFloat);
     }
+    float dropout_scale = 1.0 / (1.0 - dropout_p);
 
     void *q_ptr = (void *)q.data_ptr();
     void *k_ptr = (void *)k.data_ptr();
@@ -32,9 +33,6 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
     void *out_buffer_ptr = (void *)out_buffer.data_ptr();
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
     void *drop_mask_ptr = nullptr;
-    if(drop_mask.has_value()) {
-        drop_mask_ptr = (void *)drop_mask.value().data_ptr();
-    }
 
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
     FlashAttention _flash_attn = FlashAttention();
@@ -52,7 +50,8 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
         k_ptr,
         v_ptr,
         drop_mask_ptr,
-        dropout_p,
+        dropout_scale,
+        dropout_rand_seed,
         causal,
         return_softmax
     );
@@ -68,16 +67,15 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
                                           uint32_t head_number,
                                           uint32_t seqlens,
                                           uint32_t head_size,
-                                          const c10::optional<torch::Tensor> &drop_mask,
-                                          const float dropout_p,
                                           const float softmax_scale,
+                                          const float dropout_p,
+                                          const uint64_t dropout_rand_seed,
                                           const bool causal,
                                           const bool return_softmax,
                                           const torch::Tensor &softmax_res) {
     torch::Tensor dq = torch::zeros_like(q);
     torch::Tensor dk = torch::empty_like(k);
     torch::Tensor dv = torch::empty_like(v);
-    // torch::Tensor grad_softmax = torch::empty({bs, head_number, seqlens, seqlens}, q.options());
     void *gradout_ptr = (void *)gradout.data_ptr();
     void *q_ptr = (void *)q.data_ptr();
     void *k_ptr = (void *)k.data_ptr();
@@ -88,10 +86,6 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
     void *dv_ptr = (void *)dv.data_ptr();
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
     void *drop_mask_ptr = nullptr;
-    if(drop_mask.has_value()) {
-        drop_mask_ptr = (void *)drop_mask.value().data_ptr();
-    }
-    // void *grad_softmax_ptr = (void *)grad_softmax.data_ptr();
 
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
     FlashAttention _flash_attn = FlashAttention();
@@ -111,9 +105,10 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
         q_ptr,
         k_ptr,
         v_ptr,
+        softmax_res_ptr,
         drop_mask_ptr,
         dropout_p,
-        softmax_res_ptr,
+        dropout_rand_seed,
         causal,
         return_softmax
     );

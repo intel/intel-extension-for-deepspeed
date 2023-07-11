@@ -26,6 +26,11 @@ template <typename tuning_parameter_>
 struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::program {
   static __XETLA_API KERNEL_FUNC void initialization(utils::work_item3& ei);
 
+  static __XETLA_API KERNEL_FUNC void prefetch_q_i(
+      utils::work_item3& ei,
+      uint32_t seq_len,
+      dtype_q* ptr_q);
+
   static __XETLA_API KERNEL_FUNC void calculate_S_ij(
       utils::work_item3& ei,
       uint32_t seq_len,
@@ -49,6 +54,12 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::program {
       param_S::mat_out_t& matS,
       param_P::rowmax_t& m_tilde_vec,
       param_P::rowsum_t& l_tilde_vec);
+
+  static __XETLA_API KERNEL_FUNC void apply_dropout(
+      utils::work_item3& ei,
+      uint32_t seq_len,
+      uint64_t rand_seed,
+      param_P::mat_in_t& matP);
 
   static __XETLA_API KERNEL_FUNC void init_ml(
       utils::work_item3& ei,
@@ -119,7 +130,7 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::program {
   static __XETLA_API KERNEL_FUNC void store_global_O(
       utils::work_item3& ei,
       uint32_t batch_dim,
-      uint32_t head_dim,
+      uint32_t head_num,
       uint32_t seq_len,
       dtype_o* ptr_o,
       param_O::mat_out_t& matO);
@@ -179,9 +190,48 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<
     }
   }
   static constexpr uint32_t slm_size =
-      std::max({param_S::slm_size, param_P::slm_size, param_O::slm_size});
+      std::max({param_S::slm_size, param_P::slm_size, param_O::slm_size}) + 1;
   gpu::xetla::xetla_nbarrier_init<barrier_count>();
   gpu::xetla::xetla_local_init<slm_size>();
+}
+
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::prefetch_q_i(
+        utils::work_item3& ei,
+        uint32_t seq_len,
+        dtype_q* ptr_q) {
+  int batch_idx = ei.get_group(0);
+  int start_m = ei.get_group(1) * param_S::m_w;
+  int start_n = ei.get_group(2) * param_S::n_w;
+  int start_k = 0;
+
+  using mem_desc_src_q = typename param_S::mem_desc_input_q;
+  using mem_desc_dst_q = typename param_S::mem_desc_prefetch_q;
+  mem_desc_src_q md_src_q(
+      {ptr_q + batch_idx * utils::matrix_size(seq_len)},
+      {H, seq_len, H},
+      {start_k, start_m});
+  mem_desc_dst_q md_dst_q(
+      {param_S::prefetch_q_slm_base_addr}, {H, param_S::m_w, H}, {0, 0});
+
+  using transfer_op_t = utils::template transfer_op_t<
+      mem_desc_src_q,
+      mem_desc_dst_q,
+      typename param_S::brgemm_t>;
+
+  transfer_op_t prefetch_op;
+  typename transfer_op_t::arguments_t args(
+      md_src_q, md_dst_q, param_S::split_k_cnt);
+  typename transfer_op_t::work_group_t g(ei.get_local_linear_id());
+  prefetch_op(g, args, param_S::brgemm_slm_base_addr, param_S::barrier_offset);
+
+  gpu::xetla::xetla_fence<gpu::xetla::memory_kind::shared_local>();
+  typename param_P::store_nbarrier_t nbarrier;
+  nbarrier.init_nbarrier(
+      param_P::local_store_barrier_offset,
+      gpu::xetla::nbarrier_role::producer_consumer);
+  nbarrier.arrive_wait();
 }
 
 template <typename tuning_parameter_>
@@ -202,10 +252,22 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
   int start_m = ei.get_group(1) * param_S::m_w;
   int start_n = ei.get_group(2) * param_S::n_w;
   int start_k = 0;
-  typename param_S::mem_desc_input_q md_q(
-      {ptr_q + batch_idx * utils::matrix_size(seq_len)},
-      {H, seq_len, H},
-      {start_k, start_m});
+
+  using mem_desc_q = std::conditional_t<
+      prefetch_q,
+      typename param_S::mem_desc_prefetch_q,
+      typename param_S::mem_desc_input_q>;
+  mem_desc_q md_q;
+
+  if constexpr (prefetch_q) {
+    md_q.init(
+        {param_S::prefetch_q_slm_base_addr}, {H, param_S::m_w, H}, {0, 0});
+  } else {
+    md_q.init(
+        {ptr_q + batch_idx * utils::matrix_size(seq_len)},
+        {H, seq_len, H},
+        {start_k, start_m});
+  }
   typename param_S::mem_desc_input_k md_k(
       {ptr_k + batch_idx * utils::matrix_size(seq_len)},
       {seq_len, H, H},
@@ -215,7 +277,8 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
       md_q, md_k, param_S::split_k_cnt);
   typename param_S::brgemm_t::work_group_t g(ei.get_local_linear_id());
   matS.init(0);
-  matmul_op(g, matS, args, 0, param_S::barrier_offset);
+  matmul_op(
+      g, matS, args, param_S::brgemm_slm_base_addr, param_S::barrier_offset);
   matS.reg *= hs_rsqrt_scale;
 }
 
@@ -275,7 +338,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
   int32_t j_s = g.get_id() % mat_tile_shape::wg_size_x;
   int32_t i_s = g.get_id() / mat_tile_shape::wg_size_x;
   uint32_t nbarrier_id = param_P::reduce_barrier_offset + i_s;
-  uint32_t slm_base_addr = param_P::slm_base_addr +
+  uint32_t slm_base_addr = param_P::reduce_slm_base_addr +
       i_s * param_P::reduce_list_xlength * param_P::rowmax_t::length *
           sizeof(vec_dtype);
 
@@ -326,6 +389,38 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         j_s, nbarrier_id, slm_base_addr);
     l_tilde_vec = wg_reduce_sum(l_tilde_vec_thread);
   }
+}
+
+template <typename tuning_parameter_>
+__XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
+    program::apply_dropout(
+        utils::work_item3& ei,
+        uint32_t seq_len,
+        uint64_t rand_seed,
+        param_P::mat_in_t& matP) {
+  gpu::xetla::dropout_fwd_t<
+      param_P::mat_in_t::tile_size_x * param_P::mat_in_t::tile_size_y>
+      dropout_op;
+  int batch_idx = ei.get_group(0);
+  int i_w = ei.get_group(1);
+  int j_w = ei.get_group(2);
+
+  const uint64_t offset = batch_idx * seq_len * seq_len;
+  static constexpr float dropout_prob = 0.5f;
+  static constexpr uint32_t threshold =
+      uint32_t(dropout_prob * float(4294967296));
+  static constexpr float dropout_scale = 1.0f / (1.0f - dropout_prob);
+
+  using mat_tile_shape = param_S::mat_tile_shape;
+  using mat_worker_scope_t = mat_tile_shape::work_group_t;
+  mat_worker_scope_t g(ei.get_local_linear_id());
+  int32_t j_s = g.get_id() % mat_tile_shape::wg_size_x;
+  int32_t i_s = g.get_id() / mat_tile_shape::wg_size_x;
+  uint64_t subseq = i_w * param_S::m_w * param_S::n_w + j_w * param_S::n_w +
+      ei.get_local_linear_id();
+  dropout_op.init(rand_seed, subseq, offset, threshold, dropout_scale);
+
+  matP.reg = dropout_op.template process<dtype_p>(matP.reg);
 }
 
 template <typename tuning_parameter_>
@@ -408,24 +503,28 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
     uint32_t boundary_v_n =
         start_v_n + param_O::n_w > H ? H : start_v_n + param_O::n_w;
     typename param_O::mem_desc_input_p md_p;
-    if constexpr (
-        pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global) {
+    if constexpr (pv_buffer == mat_buffer_type::global) {
       // use global memory for storing P_ij
       constexpr uint32_t buf_size = param_S::m_w * param_S::n_w;
       md_p.init(
           {ptr_b + (batch_idx * T_r + i_w) * buf_size},
           {param_S::n_w, param_S::m_w, param_S::n_w},
           {0, 0});
-    } else if constexpr (
-        pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::local) {
+    } else if constexpr (pv_buffer == mat_buffer_type::local) {
       // use shared local memory for storing P_ij
-      dtype_p* slm_base_addr =
-          reinterpret_cast<dtype_p*>(param_P::slm_base_addr);
+      using addr_t = std::conditional_t<
+          pv_buffer == mat_buffer_type::global,
+          dtype_p*,
+          uint32_t>;
+      addr_t slm_base_addr =
+          reinterpret_cast<addr_t>(param_P::local_store_slm_base_addr);
       md_p.init(
           {slm_base_addr}, {param_S::n_w, param_S::m_w, param_S::n_w}, {0, 0});
     } else {
       // P_ij remains in register
       // TODO: to be implemented
+      static_assert(
+          pv_buffer != mat_buffer_type::reg, "pv_buffer == reg unimplemented");
     }
     typename param_O::mem_desc_input_v md_v(
         {ptr_v + batch_idx * utils::matrix_size(seq_len)},
@@ -436,7 +535,12 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         md_p, md_v, param_O::split_k_cnt);
     typename param_O::brgemm_t::work_group_t g(ei.get_local_linear_id());
     matO_new.init(0);
-    matmul_op(g, matO_new, args, 0, param_O::barrier_offset);
+    matmul_op(
+        g,
+        matO_new,
+        args,
+        param_O::brgemm_slm_base_addr,
+        param_O::barrier_offset);
   }
   // 3. O_tilde_i_weighted = diag(exp(m_tilde_ij - m_new_i)) @ O_tilde_i
   {
@@ -516,26 +620,27 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         uint32_t T_c,
         dtype_b* ptr_b,
         param_P::mat_out_t& matP) {
-  int batch_idx = ei.get_group(0);
-  int i_w = ei.get_group(1);
-  int j_w = ei.get_group(2);
   using mat_tile_shape = param_P::mat_tile_shape;
   using mat_worker_scope_t = mat_tile_shape::work_group_t;
   mat_worker_scope_t g(ei.get_local_linear_id());
   typename param_P::mem_desc_output_p md_p;
 
-  if constexpr (
-      pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global) {
+  if constexpr (pv_buffer == mat_buffer_type::global) {
     // store P_ij from register to global memory
+    int batch_idx = ei.get_group(0);
+    int i_w = ei.get_group(1);
+    int j_w = ei.get_group(2);
     constexpr uint32_t buf_size = param_S::m_w * param_S::n_w;
     md_p.init(
         {ptr_b + (batch_idx * T_r + i_w) * buf_size},
         {param_S::n_w, param_S::m_w, param_S::n_w},
         {0, 0});
-  } else if constexpr (
-      pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::local) {
+  } else if constexpr (pv_buffer == mat_buffer_type::local) {
     // store P_ij from register to shared local memory
-    dtype_p* slm_base_addr = reinterpret_cast<dtype_p*>(param_P::slm_base_addr);
+    using addr_t = std::
+        conditional_t<pv_buffer == mat_buffer_type::global, dtype_p*, uint32_t>;
+    addr_t slm_base_addr =
+        reinterpret_cast<addr_t>(param_P::local_store_slm_base_addr);
     md_p.init(
         {slm_base_addr}, {param_S::n_w, param_S::m_w, param_S::n_w}, {0, 0});
   } else {
@@ -545,11 +650,9 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
   typename param_P::epilogue_t epilogue;
   epilogue(g, matP, md_p);
 
-  if constexpr (
-      pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global) {
+  if constexpr (pv_buffer == mat_buffer_type::global) {
     gpu::xetla::xetla_fence<gpu::xetla::memory_kind::untyped_global>();
-  } else if constexpr (
-      pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::local) {
+  } else if constexpr (pv_buffer == mat_buffer_type::local) {
     gpu::xetla::xetla_fence<gpu::xetla::memory_kind::shared_local>();
   }
   typename param_P::store_nbarrier_t nbarrier;
@@ -564,12 +667,12 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
     program::store_global_O(
         utils::work_item3& ei,
         uint32_t batch_dim,
-        uint32_t head_dim,
+        uint32_t head_num,
         uint32_t seq_len,
         dtype_o* ptr_o,
         param_O::mat_out_t& matO) {
   // const uint32_t B = batch_dim;
-  // const uint32_t N = head_dim;
+  // const uint32_t N = head_num;
   // const uint32_t F = seq_len;
   // static constexpr uint32_t tile_size_y = param_O::m_s;
   // static constexpr uint32_t tile_size_x = param_O::n_s;
@@ -720,19 +823,8 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
   auto uei = utils::make_work_item(ei);
 
   program::initialization(uei);
-
-  typename param_O::mat_out_t matO;
-
-  typename param_P::factor_tile_t m_store;
-  typename param_P::factor_tile_t l_store;
   typename param_P::factor_payload_t m_payload;
   typename param_P::factor_payload_t l_payload;
-
-  typename param_P::rowmax_t& m_vec = m_store.reg;
-  typename param_P::rowsum_t& l_vec = l_store.reg;
-
-  matO.init(0.0f);
-  program::init_ml(uei, m_vec, l_vec);
   program::setup_ml_store(
       uei,
       batch_size,
@@ -745,17 +837,30 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
       m_payload,
       l_payload);
 
+  typename param_O::mat_out_t matO;
+  matO.init(0.0f);
+
+  typename param_P::factor_tile_t m_store;
+  typename param_P::factor_tile_t l_store;
+  typename param_P::rowmax_t& m_vec = m_store.reg;
+  typename param_P::rowsum_t& l_vec = l_store.reg;
+  program::init_ml(uei, m_vec, l_vec);
+
+  if constexpr (prefetch_q) {
+    program::prefetch_q_i(uei, seq_len, ptr_q);
+  }
+
   for (int j_w = 0; j_w < T_c; ++j_w) {
-    typename param_S::mat_out_t matS;
-    typename param_P::rowmax_t m_tilde_vec;
-    typename param_P::rowsum_t l_tilde_vec;
+    decltype(matO) matO_new;
+
     typename param_P::rowmax_t m_new_vec;
     typename param_P::rowsum_t l_new_vec;
 
-    decltype(matO) matO_new;
-
     uei.update_group_coord(2, j_w);
     {
+      typename param_S::mat_out_t matS;
+      typename param_P::rowmax_t m_tilde_vec;
+      typename param_P::rowsum_t l_tilde_vec;
       if constexpr (is_causal) {
         // TODO: currently supports causal mask only
         int t = utils::template check_diag_intersection<
@@ -784,6 +889,9 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
 
       program::calculate_P_ij(uei, matS, m_tilde_vec, l_tilde_vec);
       auto& matP = matS;
+      if constexpr (enable_dropout) {
+        program::apply_dropout(uei, seq_len, dropout_rand_seed, matP);
+      }
 
       program::load_ml(uei, ptr_m, m_vec, l_vec);
 
@@ -811,7 +919,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
 
     program::store_ml(uei, m_vec, m_new_vec, l_vec, l_new_vec);
   }
-  program::store_global_O(uei, batch_dim, head_dim, seq_len, ptr_o, matO);
+  program::store_global_O(uei, batch_dim, head_num, seq_len, ptr_o, matO);
   program::store_global_ml(uei, ptr_m, m_store, m_payload, l_store, l_payload);
 }
 

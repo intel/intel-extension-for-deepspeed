@@ -23,7 +23,8 @@ namespace xetla {
 
 class FLASH_ATTENTION_FWD_PARAM {
  public:
-  enum class pv_buffer_type { global, local, reg };
+  enum class mat_buffer_type { global, local, reg };
+
   template <
       typename dtype_q_ = gpu::xetla::bf16,
       typename dtype_k_ = gpu::xetla::bf16,
@@ -33,19 +34,8 @@ class FLASH_ATTENTION_FWD_PARAM {
       typename dtype_b_ = float,
       typename dtype_acc_ = float,
       typename dtype_s_ = float,
-      typename dtype_p_ = float,
-      bool is_causal_ = true,
-      bool enable_mask_ = true,
-      pv_buffer_type pv_buffer_ = pv_buffer_type::global,
-      int thread_num_ = 32,
-      uint32_t H_ = 128,
-      int B_r_ = 128,
-      int B_c_ = 128,
-      int matS_n_s_ = 64,
-      int matS_k_s_ = 32,
-      int matO_n_w_ = 128,
-      int matO_k_s_ = 16>
-  struct tuning_parameter_t {
+      typename dtype_p_ = float>
+  struct param_dtype_t {
     using dtype_q = dtype_q_;
     using dtype_k = dtype_k_;
     using dtype_v = dtype_v_;
@@ -56,15 +46,80 @@ class FLASH_ATTENTION_FWD_PARAM {
     using dtype_acc = dtype_acc_;
     using dtype_s = dtype_s_;
     using dtype_p = dtype_p_;
+  };
+  using param_dtype_default = param_dtype_t<>;
 
+  template <
+      bool is_causal_ = true,
+      bool enable_mask_ = true,
+      bool enable_dropout_ = true,
+      bool prefetch_q_ = true,
+      mat_buffer_type pv_buffer_ = mat_buffer_type::global,
+      mat_buffer_type o_buffer_ = mat_buffer_type::reg,
+      int thread_num_ = 32>
+  struct param_impl_t {
     static constexpr bool is_causal = is_causal_;
-    static constexpr bool enable_mask = is_causal;
-    // use global memory ptr_b for storing P_ij
-    // slm version WIP
-    // register version WIP
-    static constexpr pv_buffer_type pv_buffer = pv_buffer_;
+    static constexpr bool enable_dropout = enable_dropout_;
+
+    static constexpr bool prefetch_q = prefetch_q_;
+
+    static constexpr mat_buffer_type pv_buffer = pv_buffer_;
+    static constexpr mat_buffer_type o_buffer = o_buffer_;
 
     static constexpr int thread_num = thread_num_;
+  };
+  using param_impl_default = param_impl_t<>;
+
+  template <
+      uint32_t matS_periodic_sync_interval_ = 8,
+      uint32_t matS_prefetch_distance_ = 3,
+      uint32_t matO_periodic_sync_interval_ = 8,
+      uint32_t matO_prefetch_distance_ = 3>
+  struct param_fine_tune_t {
+    static constexpr uint32_t matS_periodic_sync_interval =
+        matS_periodic_sync_interval_;
+    static constexpr uint32_t matS_prefetch_distance = matS_prefetch_distance_;
+    static constexpr uint32_t matO_periodic_sync_interval =
+        matO_periodic_sync_interval_;
+    static constexpr uint32_t matO_prefetch_distance = matO_prefetch_distance_;
+  };
+  using param_fine_tune_default = param_fine_tune_t<>;
+
+  template <
+      typename param_dtype_ = param_dtype_default,
+      typename param_impl_ = param_impl_default,
+      uint32_t H_ = 128,
+      int B_r_ = 128,
+      int B_c_ = 128,
+      int matS_n_s_ = 64,
+      int matS_k_s_ = 32,
+      int matO_n_w_ = 128,
+      int matO_k_s_ = 16,
+      typename param_fine_tune_ = param_fine_tune_default>
+  struct tuning_parameter_t {
+    using dtype_q = param_dtype_::dtype_q;
+    using dtype_k = param_dtype_::dtype_k;
+    using dtype_v = param_dtype_::dtype_v;
+    using dtype_o = param_dtype_::dtype_o;
+    using dtype_m = param_dtype_::dtype_m;
+    using dtype_b = param_dtype_::dtype_b;
+
+    using dtype_acc = param_dtype_::dtype_acc;
+    using dtype_s = param_dtype_::dtype_s;
+    using dtype_p = param_dtype_::dtype_p;
+
+    static constexpr bool is_causal = param_impl_::is_causal;
+    static constexpr bool enable_mask = is_causal;
+    static constexpr bool enable_dropout = param_impl_::enable_dropout;
+    // use global memory ptr_b for storing P_ij
+    // slm version ignores ptr_b
+    // register version WIP
+    static constexpr mat_buffer_type pv_buffer = param_impl_::pv_buffer;
+    static constexpr mat_buffer_type o_buffer = param_impl_::o_buffer;
+
+    static constexpr bool prefetch_q = param_impl_::prefetch_q;
+
+    static constexpr int thread_num = param_impl_::thread_num;
 
     // hidden size per head
     static constexpr uint32_t H = H_;
@@ -76,6 +131,8 @@ class FLASH_ATTENTION_FWD_PARAM {
 
     static constexpr int matO_n_w = matO_n_w_;
     static constexpr int matO_k_s = matO_k_s_;
+
+    using fine_tune = param_fine_tune_;
   };
 };
 
@@ -95,12 +152,17 @@ class FLASH_ATTENTION_FWD_IMPL {
   using dtype_s = tuning_parameter::dtype_s;
   using dtype_p = tuning_parameter::dtype_p;
 
+  using mat_buffer_type = FLASH_ATTENTION_FWD_PARAM::mat_buffer_type;
+
+ public:
   struct arguments_t {
     const uint32_t batch_dim;
-    const uint32_t head_dim;
+    const uint32_t head_num;
     const uint32_t batch_size;
     const uint32_t sequence_length;
+    const uint32_t head_dim;
     const float hs_rsqrt_scale;
+    const uint64_t dropout_rand_seed;
     dtype_q* ptr_q;
     dtype_k* ptr_k;
     dtype_v* ptr_v;
@@ -110,9 +172,11 @@ class FLASH_ATTENTION_FWD_IMPL {
 
     arguments_t(
         uint32_t batch_dim_,
-        const uint32_t head_dim_,
+        const uint32_t head_num_,
         uint32_t sequence_length_,
+        uint32_t head_dim_,
         float hs_rsqrt_scale_,
+        uint64_t dropout_rand_seed_,
         dtype_q* ptr_q_,
         dtype_k* ptr_k_,
         dtype_v* ptr_v_,
@@ -120,10 +184,12 @@ class FLASH_ATTENTION_FWD_IMPL {
         dtype_m* ptr_m_,
         dtype_b* ptr_b_)
         : batch_dim(batch_dim_),
-          head_dim(head_dim_),
-          batch_size(batch_dim_ * head_dim_),
+          head_num(head_num_),
+          batch_size(batch_dim_ * head_num_),
           sequence_length(sequence_length_),
+          head_dim(head_dim_),
           hs_rsqrt_scale(hs_rsqrt_scale_),
+          dropout_rand_seed(dropout_rand_seed_),
           ptr_q(ptr_q_),
           ptr_k(ptr_k_),
           ptr_v(ptr_v_),
@@ -132,20 +198,24 @@ class FLASH_ATTENTION_FWD_IMPL {
           ptr_b(ptr_b_){};
   };
 
-  // hidden size per head
+  // max head dim
   static constexpr uint32_t H = tuning_parameter::H;
   static constexpr int thread_num = tuning_parameter::thread_num;
-  static constexpr int is_causal = tuning_parameter::is_causal;
-  static constexpr int enable_mask = tuning_parameter::enable_mask;
-  static constexpr FLASH_ATTENTION_FWD_PARAM::pv_buffer_type pv_buffer =
-      tuning_parameter::pv_buffer;
+  static constexpr bool is_causal = tuning_parameter::is_causal;
+  static constexpr bool enable_mask = tuning_parameter::enable_mask;
+  static constexpr bool enable_dropout = tuning_parameter::enable_dropout;
+  static constexpr mat_buffer_type pv_buffer = tuning_parameter::pv_buffer;
+  static constexpr mat_buffer_type o_buffer = tuning_parameter::o_buffer;
+  static constexpr bool prefetch_q = tuning_parameter::prefetch_q;
   static constexpr int B_r = tuning_parameter::B_r;
   static constexpr int B_c = tuning_parameter::B_c;
   const uint32_t batch_dim;
-  const uint32_t head_dim;
+  const uint32_t head_num;
   const uint32_t batch_size;
   const uint32_t seq_len;
+  const uint32_t head_dim;
   const float hs_rsqrt_scale;
+  const uint64_t dropout_rand_seed;
   dtype_q* const ptr_q;
   dtype_k* const ptr_k;
   dtype_v* const ptr_v;
@@ -159,20 +229,24 @@ class FLASH_ATTENTION_FWD_IMPL {
 
   explicit FLASH_ATTENTION_FWD_IMPL(arguments_t& args)
       : batch_dim(args.batch_dim),
-        head_dim(args.head_dim),
+        head_num(args.head_num),
         batch_size(args.batch_size),
         seq_len(args.sequence_length),
+        head_dim(args.head_dim),
         hs_rsqrt_scale(args.hs_rsqrt_scale),
+        dropout_rand_seed(args.dropout_rand_seed),
         ptr_q(args.ptr_q),
         ptr_k(args.ptr_k),
         ptr_v(args.ptr_v),
         ptr_o(args.ptr_o),
         ptr_m(args.ptr_m),
         ptr_b(args.ptr_b),
-        T_r(args.sequence_length / B_r),
-        T_c(args.sequence_length / B_c),
+        T_r((args.sequence_length + B_r - 1) / B_r),
+        T_c((args.sequence_length + B_c - 1) / B_c),
         t_y(param_S::m_w / param_S::m_s),
         t_x(param_S::n_w / param_S::n_s) {}
+
+  static constexpr int slm_base_addr = 0;
 
   template <
       uint32_t m_w_,
@@ -184,8 +258,10 @@ class FLASH_ATTENTION_FWD_IMPL {
     using compute_attr =
         gpu::xetla::group::compute_attr_t<dtype_q, dtype_k, dtype_acc>;
     struct fine_tuning {
-      static constexpr uint32_t periodic_sync_interval = 8;
-      static constexpr uint32_t prefetch_distance = 3;
+      static constexpr uint32_t periodic_sync_interval =
+          tuning_parameter::fine_tune::matS_periodic_sync_interval;
+      static constexpr uint32_t prefetch_distance =
+          tuning_parameter::fine_tune::matS_prefetch_distance;
     };
     // should larger than 8
     static constexpr uint32_t k_iter_num = k_s_;
@@ -201,6 +277,10 @@ class FLASH_ATTENTION_FWD_IMPL {
         dtype_q,
         gpu::xetla::mem_layout::row_major,
         gpu::xetla::mem_space::global>;
+    using mem_desc_prefetch_q = gpu::xetla::mem_desc_t<
+        dtype_q,
+        gpu::xetla::mem_layout::row_major,
+        gpu::xetla::mem_space::local>;
     using mem_desc_input_k = gpu::xetla::mem_desc_t<
         dtype_k,
         gpu::xetla::mem_layout::col_major,
@@ -216,17 +296,36 @@ class FLASH_ATTENTION_FWD_IMPL {
     static constexpr int n_x = n_w / n_s;
     static constexpr int n_y = m_w / m_s;
     using tile_shape = gpu::xetla::group::tile_shape_t<n_w, m_w, n_s, m_s>;
-    using brgemm_t = gpu::xetla::group::brgemm_t<
-        compute_policy,
-        tile_shape,
-        mem_desc_input_q,
-        mem_desc_input_k>;
+    using brgemm_t = std::conditional_t<
+        prefetch_q,
+        gpu::xetla::group::brgemm_t<
+            compute_policy,
+            tile_shape,
+            mem_desc_prefetch_q,
+            mem_desc_input_k>,
+        gpu::xetla::group::brgemm_t<
+            compute_policy,
+            tile_shape,
+            mem_desc_input_q,
+            mem_desc_input_k>>;
     using mat_tile_shape = brgemm_t::tile_shape;
     using mat_out_t = brgemm_t::matAcc_t;
     static constexpr int split_k_cnt = k_w_ / k_iter_num;
     static constexpr int barrier_count = brgemm_t::barrier_count;
     static constexpr int barrier_offset = 0;
-    static constexpr int slm_size = brgemm_t::slm_size;
+    static constexpr int prefetch_q_slm_base_addr = slm_base_addr;
+    static_assert(
+        prefetch_q_slm_base_addr % 4 == 0,
+        "prefetch_q_slm_base_addr alignment failed");
+    static constexpr int prefetch_q_slm_size =
+        prefetch_q ? m_w * H * sizeof(dtype_q) : 0;
+    static constexpr int brgemm_slm_base_addr =
+        prefetch_q_slm_base_addr + prefetch_q_slm_size;
+    static_assert(
+        brgemm_slm_base_addr % 4 == 0,
+        "brgemm_slm_base_addr alignment failed");
+    static constexpr int slm_size = brgemm_slm_base_addr + brgemm_t::slm_size;
+    static_assert(slm_size <= 128 * 1024, "slm size exceeds 128k!");
   };
 
   using param_S = param_S_t<
@@ -306,9 +405,13 @@ class FLASH_ATTENTION_FWD_IMPL {
            sizeof(vec_dtype))
         : 0;
 
-    static constexpr uint32_t slm_base_addr = 0;
+    static constexpr uint32_t reduce_slm_base_addr =
+        param_S::prefetch_q_slm_base_addr + param_S::prefetch_q_slm_size;
+    static_assert(
+        reduce_slm_base_addr % 4 == 0,
+        "reduce_slm_base_addr alignment failed");
     using mem_desc_output_p = std::conditional_t<
-        pv_buffer == FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global,
+        pv_buffer == mat_buffer_type::global,
         gpu::xetla::mem_desc_t<
             dtype_b,
             gpu::xetla::mem_layout::row_major,
@@ -326,13 +429,19 @@ class FLASH_ATTENTION_FWD_IMPL {
     static constexpr int local_store_barrier_count = 1;
     static constexpr int local_store_barrier_offset =
         param_S::barrier_count + reduce_barrier_count;
-    static constexpr int local_store_slm_size = param_S::n_x * param_S::n_y *
-        mat_type::tile_elems * sizeof(typename mat_type::dtype);
+    static constexpr uint32_t local_store_slm_base_addr =
+        reduce_slm_base_addr + reduce_slm_size;
+    static_assert(
+        local_store_slm_base_addr % 4 == 0,
+        "local_store_slm_base_addr alignment failed");
+    static constexpr int local_store_slm_size =
+        param_S::m_w * param_S::n_w * sizeof(typename mat_type::dtype);
 
     static constexpr int barrier_count =
         reduce_barrier_count + local_store_barrier_count;
     static constexpr int slm_size =
-        std::max({reduce_slm_size, local_store_slm_size});
+        reduce_slm_base_addr + reduce_slm_size + local_store_slm_size;
+    static_assert(slm_size <= 128 * 1024, "slm size exceeds 128k!");
   };
 
   template <uint32_t m_w_, uint32_t n_w_, uint32_t k_w_, uint32_t k_s_>
@@ -340,8 +449,10 @@ class FLASH_ATTENTION_FWD_IMPL {
     using compute_attr =
         gpu::xetla::group::compute_attr_t<dtype_p, dtype_acc, dtype_acc>;
     struct fine_tuning {
-      static constexpr uint32_t periodic_sync_interval = 8;
-      static constexpr uint32_t prefetch_distance = 3;
+      static constexpr uint32_t periodic_sync_interval =
+          tuning_parameter::fine_tune::matO_periodic_sync_interval;
+      static constexpr uint32_t prefetch_distance =
+          tuning_parameter::fine_tune::matO_prefetch_distance;
     };
     // should larger than 8
     static constexpr uint32_t k_iter_num = k_s_;
@@ -387,7 +498,25 @@ class FLASH_ATTENTION_FWD_IMPL {
         "match");
     static constexpr int barrier_offset =
         (barrier_count == 0) ? 0 : param_P::barrier_count;
-    static constexpr int slm_size = brgemm_t::slm_size;
+    static constexpr int brgemm_slm_base_addr =
+        param_P::local_store_slm_base_addr + param_P::local_store_slm_size;
+    static_assert(
+        brgemm_slm_base_addr % 4 == 0,
+        "brgemm_slm_base_addr alignment failed");
+
+    static constexpr int o_buffer_slm_size =
+        (o_buffer == mat_buffer_type::local) ? m_w * n_w * sizeof(dtype_acc)
+                                             : 0;
+    static constexpr int o_buffer_slm_base_addr = std::max(
+        {param_S::slm_size,
+         param_P::slm_size,
+         static_cast<int>(brgemm_slm_base_addr + brgemm_t::slm_size)});
+    static_assert(
+        o_buffer_slm_base_addr % 4 == 0,
+        "o_buffer_slm_base_addr alignment failed");
+
+    static constexpr int slm_size = o_buffer_slm_base_addr + o_buffer_slm_size;
+    static_assert(slm_size <= 128 * 1024, "slm size exceeds 128k!");
   };
 
   using param_O = param_O_t<
@@ -400,15 +529,6 @@ class FLASH_ATTENTION_FWD_IMPL {
   struct program;
 
  public:
-  sycl::nd_range<3> get_nd_range() const {
-    // sycl::range<3> global_range {batch_size, T_r, T_c};
-    sycl::range<3> global_range{batch_size, T_r, 1};
-    sycl::range<3> local_range{1, t_y, t_x};
-    sycl::nd_range<3> nd_range(global_range * local_range, local_range);
-
-    return nd_range;
-  }
-
   __XETLA_API KERNEL_FUNC void run(gpu::xetla::xetla_exec_item<3>& ei) const;
 };
 

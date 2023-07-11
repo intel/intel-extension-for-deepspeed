@@ -70,13 +70,15 @@ struct flash_attention_bwd {
         T* ptr_dQ,
         T* ptr_dK,
         T* ptr_dV,
-        uint32_t seq_q,
-        uint32_t seq_k,
-        float scale,
+        const uint32_t seq_q,
+        const uint32_t seq_k,
+        const float scale,
+        const float dropout_prob = 0,
+        const uint64_t rand_seed = 67280421310721,
         T* ptr_p = nullptr,
         T* ptr_dS = nullptr, // debug
         T* ptr_dP = nullptr, // debug
-        uint32_t matP_base = 0)
+        const uint32_t matP_base = 0)
         : inner_loop_arguments(
               ptr_q,
               ptr_k,
@@ -91,6 +93,8 @@ struct flash_attention_bwd {
               seq_q,
               seq_k,
               scale,
+              dropout_prob,
+              rand_seed,
               ptr_p,
               ptr_dS,
               ptr_dP,
@@ -101,6 +105,9 @@ struct flash_attention_bwd {
       xetla_exec_item<3> ei,
       arguments_t& args) {
     fmha_bwd_inner_loop_t fmha_inner_loop;
+    xetla_nbarrier_init<
+        gemm_brxd_block_tile_t::tile_shape_t::wg_size_x +
+        gemm_brxd_block_tile_t::tile_shape_t::wg_size_y * 2>();
     int bc = gemm_brxbc_block_tile_t::blocked_N;
     int max_loop_steps = (args.seq_k + bc - 1) / bc;
     for (int loop_idx = 0; loop_idx < max_loop_steps; loop_idx++) {

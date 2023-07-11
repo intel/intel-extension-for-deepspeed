@@ -26,6 +26,20 @@ template <typename tuning_parameter_>
 struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils {
   static constexpr float inf = std::numeric_limits<float>::infinity();
 
+  static sycl::nd_range<3> get_nd_range(
+      const FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>& kernel) {
+    uint32_t batch_size = kernel.batch_size;
+    uint32_t T_r = kernel.T_r;
+    uint32_t t_x = kernel.t_x;
+    uint32_t t_y = kernel.t_y;
+    // sycl::range<3> global_range {batch_size, T_r, T_c};
+    sycl::range<3> global_range{batch_size, T_r, 1};
+    sycl::range<3> local_range{1, t_y, t_x};
+    sycl::nd_range<3> nd_range(global_range * local_range, local_range);
+
+    return nd_range;
+  }
+
   template <int dims = 1>
   class work_item;
 
@@ -34,6 +48,12 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils {
   template <int dims = 1>
   static __XETLA_API KERNEL_FUNC work_item<dims> make_work_item(
       gpu::xetla::xetla_exec_item<dims>& ei);
+
+  template <
+      typename mem_desc_src_t_,
+      typename mem_desc_dst_t_,
+      typename brgemm_t_>
+  class transfer_op_t;
 
   static __XETLA_API KERNEL_FUNC uint32_t matrix_size(uint32_t seq_len);
   static __XETLA_API KERNEL_FUNC uint32_t factor_size(uint32_t seq_len);
@@ -83,7 +103,7 @@ template <typename tuning_parameter_>
 template <int dims>
 class FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::work_item {
  public:
-  work_item() = default;
+  work_item() = delete;
   explicit work_item(gpu::xetla::xetla_exec_item<dims>& ei)
       : ei_(ei), local_group_(0) {}
 
@@ -130,6 +150,247 @@ __XETLA_API KERNEL_FUNC
         gpu::xetla::xetla_exec_item<dims>& ei) {
   return work_item<dims>(ei);
 }
+
+template <typename tuning_parameter_>
+template <
+    typename mem_desc_src_t_,
+    typename mem_desc_dst_t_,
+    typename brgemm_t_>
+class FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::transfer_op_t {
+ public:
+  using mem_desc_src_t = mem_desc_src_t_;
+  using mem_desc_dst_t = mem_desc_dst_t_;
+  using tile_shape = brgemm_t_::tile_shape;
+  using compute_policy = brgemm_t_::compute_policy;
+  static constexpr uint32_t accum_step = compute_policy::accum_step;
+  static constexpr uint32_t wg_tile_m = tile_shape::wg_tile_size_y;
+  static constexpr uint32_t wg_tile_n = tile_shape::wg_tile_size_x;
+  static constexpr uint32_t sg_tile_m = tile_shape::sg_tile_size_y;
+  static constexpr uint32_t sg_tile_n = tile_shape::sg_tile_size_x;
+  static constexpr uint32_t wg_size_x = tile_shape::wg_size_x;
+  static constexpr uint32_t wg_size_y = tile_shape::wg_size_y;
+  using work_group_t = typename tile_shape::work_group_t;
+
+  constexpr static gpu::xetla::gpu_arch arch_tag = compute_policy::arch_tag;
+
+ private:
+  using mem_desc_a_t = mem_desc_src_t;
+
+ private:
+  /******** set data type **********/
+  using dtype_a = typename mem_desc_a_t::dtype;
+  using dtype_mma_a = typename compute_policy::dtype_mma_a;
+
+  /******** set memory attribute **********/
+  static constexpr gpu::xetla::mem_layout mem_layout_a = mem_desc_a_t::layout;
+  static constexpr gpu::xetla::mem_space mem_space_a = mem_desc_a_t::space;
+  static constexpr bool is_col_major_a =
+      mem_layout_a == gpu::xetla::mem_layout::col_major;
+  static constexpr bool is_local_a =
+      mem_space_a == gpu::xetla::mem_space::local;
+  static_assert(
+      is_local_a == false,
+      "mem_desc_a_t is already in slm, no need to call this op");
+  static constexpr gpu::xetla::tdesc_update_dir update_dir_a = is_col_major_a
+      ? gpu::xetla::tdesc_update_dir::y_dir
+      : gpu::xetla::tdesc_update_dir::x_dir;
+  static constexpr gpu::xetla::tdesc_update_dir update_dir_a_dst =
+      gpu::xetla::tdesc_update_dir::x_dir;
+
+  static constexpr uint32_t stages = compute_policy::stages;
+  static constexpr uint32_t sync_freq = compute_policy::sync_freq;
+
+  /******** set tile layout && worker scope **********/
+  static constexpr uint32_t tile_size_x_a = accum_step;
+  static constexpr uint32_t tile_size_y_a = sg_tile_m;
+  static constexpr uint32_t block_size_x_a =
+      compute_policy::block_bytes_x_a / sizeof(dtype_mma_a);
+  static constexpr uint32_t block_size_y_a =
+      (compute_policy::block_size_y_a > tile_size_y_a)
+      ? tile_size_y_a
+      : compute_policy::block_size_y_a;
+
+  /******** set tile  **********/
+  static constexpr bool is_vnni_tiled_a =
+      (sizeof(dtype_a) < sizeof(uint32_t)) && is_col_major_a;
+  static constexpr gpu::xetla::reg_layout reg_layout_a = is_vnni_tiled_a
+      ? gpu::xetla::reg_layout::vnni_tiled
+      : gpu::xetla::reg_layout::tiled;
+  using matA_tile_desc_t = gpu::xetla::subgroup::tile_desc_t<
+      tile_size_x_a,
+      tile_size_y_a,
+      block_size_x_a,
+      block_size_y_a,
+      reg_layout_a>;
+  using matA_t = gpu::xetla::subgroup::tile_t<dtype_a, matA_tile_desc_t>;
+  using matA_payload_t = gpu::xetla::subgroup::mem_payload_t<
+      dtype_a,
+      matA_tile_desc_t,
+      gpu::xetla::subgroup::msg_type_v<matA_tile_desc_t, mem_space_a>,
+      mem_layout_a,
+      mem_space_a,
+      arch_tag>;
+  using matA_prefetch_payload_t = gpu::xetla::subgroup::prefetch_payload_t<
+      dtype_a,
+      gpu::xetla::subgroup::tile_desc_t<tile_size_x_a, tile_size_y_a, 1, 1>,
+      mem_layout_a,
+      mem_space_a,
+      wg_size_x,
+      arch_tag>;
+
+  static constexpr gpu::xetla::reg_layout reg_layout_a_dst =
+      gpu::xetla::reg_layout::tiled;
+  using matA_dst_tile_desc_t = gpu::xetla::subgroup::tile_desc_t<
+      tile_size_x_a,
+      tile_size_y_a,
+      block_size_x_a,
+      block_size_y_a,
+      reg_layout_a_dst>;
+  using matA_dst_t =
+      gpu::xetla::subgroup::tile_t<dtype_a, matA_dst_tile_desc_t>;
+  using matA_dst_payload_t = gpu::xetla::subgroup::mem_payload_t<
+      dtype_a,
+      matA_dst_tile_desc_t,
+      gpu::xetla::msg_type::scatter,
+      mem_desc_dst_t::layout,
+      mem_desc_dst_t::space,
+      arch_tag>;
+
+ private:
+  static constexpr bool enable_periodic_sync = (sync_freq != 0);
+  static constexpr uint32_t barrier_count_x = wg_size_y > 1 ? wg_size_x : 0;
+  static constexpr uint32_t barrier_count_y = wg_size_x > 1 ? wg_size_y : 0;
+
+ public:
+  static constexpr uint32_t barrier_count =
+      enable_periodic_sync ? barrier_count_x + barrier_count_y : 0;
+  // current only support matA from slm
+  static constexpr uint32_t slm_size =
+      is_local_a ? wg_tile_m * accum_step * sizeof(dtype_a) : 0;
+  struct arguments_t {
+    mem_desc_src_t matA_base_desc;
+    mem_desc_dst_t matAD_base_desc;
+    uint32_t inner_loop_count;
+
+    inline arguments_t() = default;
+
+    inline arguments_t(
+        mem_desc_src_t matA_desc,
+        mem_desc_dst_t matAD_desc,
+        uint32_t loop_count)
+        : matA_base_desc(matA_desc),
+          matAD_base_desc(matAD_desc),
+          inner_loop_count(loop_count) {}
+    // Be aware of the risks: Rule of three (copy constructor, copy assignment,
+    // destructor) Please check if you need to add self-define destructor inline
+    // ~arguments_t(){}
+    inline arguments_t(const arguments_t& args)
+        : matA_base_desc(args.matA_base_desc),
+          matAD_base_desc(args.matAD_base_desc),
+          inner_loop_count(args.inner_loop_count) {}
+    inline arguments_t& operator=(const arguments_t& args) {
+      this->matA_base_desc = args.matA_base_desc;
+      this->matAD_base_desc = args.matAD_base_desc;
+      this->inner_loop_count = args.inner_loop_count;
+      return *this;
+    }
+
+    inline void init(
+        mem_desc_src_t matA_desc,
+        mem_desc_dst_t matAD_desc,
+        uint32_t loop_count) {
+      matA_base_desc = matA_desc;
+      matAD_base_desc = matAD_desc;
+      inner_loop_count = loop_count;
+    }
+  };
+
+ public:
+  __XETLA_API KERNEL_FUNC void operator()(
+      work_group_t& g,
+      arguments_t args,
+      uint32_t slm_base = 0,
+      uint32_t nbarrier_base = 0) {
+    int32_t sg_idx = g.get_id() % wg_size_x;
+    int32_t sg_idy = g.get_id() / wg_size_x;
+    update_sg_tile_tdesc(args, sg_idx, sg_idy);
+    matA_t matA;
+    matA_payload_t matA_payload(args.matA_base_desc);
+    matA_dst_t matA_dst;
+    matA_dst_payload_t matA_dst_payload(args.matAD_base_desc);
+    matA_prefetch_payload_t matA_prefetch_payload(args.matA_base_desc, sg_idx);
+    gpu::xetla::xetla_nbarrier_t<wg_size_x, wg_size_x> nbarrier_a;
+    nbarrier_a.init_nbarrier(
+        sg_idy + nbarrier_base, gpu::xetla::nbarrier_role::producer_consumer);
+
+#pragma unroll
+    for (int i = 0; i < stages; i++) {
+      gpu::xetla::subgroup::tile_prefetch<
+          gpu::xetla::cache_hint::cached,
+          gpu::xetla::cache_hint::cached>(matA_prefetch_payload);
+      matA_prefetch_payload.template update_tdesc<update_dir_a>(
+          matA_t::tile_size_x);
+    }
+
+    for (int i = 0; i < args.inner_loop_count; i++) {
+      if constexpr (enable_periodic_sync) {
+        if ((i % sync_freq) == 0) {
+          if constexpr (wg_size_x > 1) {
+            nbarrier_a.arrive();
+          }
+        }
+      }
+      gpu::xetla::subgroup::tile_load<
+          gpu::xetla::cache_hint::cached,
+          gpu::xetla::cache_hint::cached>(matA, matA_payload);
+      SW_BARRIER();
+      if constexpr (stages != 0) {
+        gpu::xetla::subgroup::tile_prefetch<
+            gpu::xetla::cache_hint::cached,
+            gpu::xetla::cache_hint::cached>(matA_prefetch_payload);
+      }
+      SW_BARRIER();
+      matA_payload.template update_tdesc<update_dir_a>(matA_t::tile_size_x);
+      if constexpr (stages != 0) {
+        matA_prefetch_payload.template update_tdesc<update_dir_a>(
+            matA_t::tile_size_x);
+      }
+      SW_BARRIER();
+      if constexpr (is_vnni_tiled_a) {
+        gpu::xetla::subgroup::vnni_reverse(matA);
+      }
+
+      gpu::xetla::subgroup::elemwise_cvt(matA_dst, matA);
+      gpu::xetla::subgroup::tile_store(matA_dst, matA_dst_payload);
+      SW_BARRIER();
+
+      matA_dst_payload.template update_tdesc<update_dir_a_dst>(
+          matA_dst_t::tile_size_x);
+
+      if constexpr (enable_periodic_sync) {
+        if ((i % sync_freq) == 0) {
+          if constexpr (wg_size_x > 1) {
+            nbarrier_a.wait();
+          }
+        }
+      }
+    }
+    SW_BARRIER();
+  }
+
+ private:
+  /// @brief Updates tile base descriptor based on the tid.
+  __XETLA_API static void update_sg_tile_tdesc(
+      arguments_t& args,
+      int32_t sg_idx,
+      int32_t sg_idy) {
+    int32_t tile_offset_n = sg_idx * sg_tile_n;
+    int32_t tile_offset_m = sg_idy * sg_tile_m;
+
+    args.matA_base_desc.update_coord_y(tile_offset_m);
+    args.matAD_base_desc.update_coord_y(tile_offset_m);
+  }
+};
 
 template <typename tuning_parameter_>
 __XETLA_API KERNEL_FUNC uint32_t

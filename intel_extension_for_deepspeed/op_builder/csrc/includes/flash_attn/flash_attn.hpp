@@ -65,6 +65,7 @@ bool flash_scaled_attn_bf16_fwd(
     const void* drop_mask =
         nullptr, // for dtopout mask if has, use uint8_t as data type
     const float dropout_scale = 1.0, // dropout_scale = 1 / (1 - drop_p)
+    const uint64_t dropout_rand_seed = 0, // dropout random generator seed
     const bool is_casual = true, // Indicate whether do mask_fill before softmax
     const bool store_softmax_out =
         false); // Indicate whether output softmax result
@@ -86,11 +87,14 @@ bool flash_scaled_attn_bf16_bwd(
     const void* q_ptr, // saved Q input from forward
     const void* k_ptr, // saved K input from forward
     const void* v_ptr, // saved V input from forward
-    const void* drop_mask_ptr, // may be saved drop_mask from forward or
-                               // regenrated drop mask use uint8_t as data type
-    const float dropout_scale, // saved dropout_scale from forward
     const void* softmax_workspace_ptr, // saved softmax output or
                                        // row_max/row_sum from forward
+    const void* drop_mask_ptr =
+        nullptr, // may be saved drop_mask from forward or regenrated drop mask
+                 // use uint8_t as data type
+    const float dropout_prob =
+        0, // dropout probility 0-1, if 0, there woukd be no dropout
+    const uint64_t rand_seed = 0, // regenrated drop mask by same random seed
     const bool is_casual = true, // Indicate whether do mask_fill before softmax
     const bool softmax_out_saved =
         false); // Indicate whether softmax result has been saved and not need
@@ -117,6 +121,7 @@ public:
                  const void* v_ptr,
                  const void* drop_mask = nullptr,
                  const float dropout_scale = 1.0,
+                 const uint64_t dropout_rand_seed = 0,
                  const bool is_causal = true,
                  const bool store_softmax_out = false) {
         RECORD_FUNCTION("flash_scaled_attn_bf16_fwd", c10::ArrayRef<c10::IValue>({}));
@@ -135,6 +140,7 @@ public:
             v_ptr,
             drop_mask,
             dropout_scale,
+            dropout_rand_seed,
             is_causal,
             store_softmax_out
         );
@@ -155,9 +161,10 @@ public:
                   const void* q_ptr,
                   const void* k_ptr,
                   const void* v_ptr,
-                  const void* drop_mask,
-                  const float dropout_scale,
                   const void* softmax_workspace_ptr,
+                  const void* drop_mask = nullptr,
+                  const float dropout_prob = 0,
+                  const uint64_t dropout_rand_seed = 0,
                   const bool is_causal = true,
                   const bool store_softmax_out = false) {
         RECORD_FUNCTION("flash_scaled_attn_bf16_bwd", c10::ArrayRef<c10::IValue>({}));
@@ -177,9 +184,10 @@ public:
             q_ptr,
             k_ptr,
             v_ptr,
-            drop_mask,
-            dropout_scale,
             softmax_workspace_ptr,
+            drop_mask,
+            dropout_prob,
+            dropout_rand_seed,
             is_causal,
             store_softmax_out
         );

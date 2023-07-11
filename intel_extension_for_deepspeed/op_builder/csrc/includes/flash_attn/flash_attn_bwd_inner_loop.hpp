@@ -15,7 +15,6 @@
  *******************************************************************************/
 
 #pragma once
-
 #include "flash_attn_bwd_utils.hpp"
 #include "xetla.hpp"
 
@@ -182,7 +181,7 @@ struct fmha_block_t {
   // TODO: all brgemm's sg_tile split are not same
   using worker_scope_t = typename brgemm_brxbc_t::work_group_t;
 
-  using wg_reduce_sum_t = customer_group_reduce_t<
+  using wg_reduce_sum_t = group_reduce_t<
       acc_T,
       1,
       tile_shape_brxd::sg_tile_size_y,
@@ -198,64 +197,82 @@ struct fmha_block_t {
       matAcc_brxbc_t,
       worker_scope_t>;
 
+  using dropout_t = dropout_fwd_t<tile_desc_brxbc_t::tile_elems>;
+  dropout_t dropout_op;
+
+  xetla_nbarrier_t<tile_shape_brxd::wg_size_y, tile_shape_brxd::wg_size_y>
+      nbarrier_y;
+  xetla_nbarrier_t<tile_shape_brxd::wg_size_x, tile_shape_brxd::wg_size_x>
+      nbarrier_x;
+
   struct arguments_t {
     T* ptr_q;
     T* ptr_k;
     T* ptr_v;
     T* ptr_o;
-    T* ptr_p; // debug
     acc_T* ptr_l;
     acc_T* ptr_m;
     T* ptr_dO;
     T* ptr_dQ;
     T* ptr_dK;
     T* ptr_dV;
+    const uint64_t rand_seed;
+    const float dropout_prob;
+    bool dropout_enabled;
+
     T* ptr_dP; // TODO: delete
+    T* ptr_p; // debug
     T* ptr_dS;
     uint32_t matP_base = 0;
 
     arguments_t(){};
     arguments_t(
-        T* ptr_q,
-        T* ptr_k,
-        T* ptr_v,
-        T* ptr_o,
-        acc_T* ptr_l,
-        acc_T* ptr_m,
-        T* ptr_dO,
-        T* ptr_dQ,
-        T* ptr_dK,
-        T* ptr_dV,
-        uint32_t seq_q,
-        uint32_t seq_k,
-        float scale,
-        T* ptr_p = nullptr,
-        T* ptr_dS = nullptr, // debug
-        T* ptr_dP = nullptr, // debug
-        uint32_t matP_base = 0)
-        : ptr_q(ptr_q),
-          ptr_k(ptr_k),
-          ptr_v(ptr_v),
-          ptr_o(ptr_o),
-          ptr_l(ptr_l),
-          ptr_m(ptr_m),
-          ptr_dO(ptr_dO),
-          ptr_dQ(ptr_dQ),
-          ptr_dK(ptr_dK),
-          ptr_dV(ptr_dV),
-          seq_q(seq_q),
-          seq_k(seq_k),
-          scale(scale),
-          ptr_p(ptr_p), // TODO: delete , just for debug
-          ptr_dS(ptr_dS),
-          ptr_dP(ptr_dP),
-          matP_base(matP_base){};
-    uint32_t seq_q;
-    uint32_t seq_k;
-    float scale;
+        T* ptr_q_,
+        T* ptr_k_,
+        T* ptr_v_,
+        T* ptr_o_,
+        acc_T* ptr_l_,
+        acc_T* ptr_m_,
+        T* ptr_dO_,
+        T* ptr_dQ_,
+        T* ptr_dK_,
+        T* ptr_dV_,
+        const uint32_t seq_q_,
+        const uint32_t seq_k_,
+        const float scale_,
+        // const bool apply_dropout_ = false,
+        const float dropout_prob_ = 0,
+        const uint64_t rand_seed_ = 67280421310721,
+        T* ptr_p_ = nullptr,
+        T* ptr_dS_ = nullptr, // debug
+        T* ptr_dP_ = nullptr, // debug
+        const uint32_t matP_base_ = 0)
+        : ptr_q(ptr_q_),
+          ptr_k(ptr_k_),
+          ptr_v(ptr_v_),
+          ptr_o(ptr_o_),
+          ptr_l(ptr_l_),
+          ptr_m(ptr_m_),
+          ptr_dO(ptr_dO_),
+          ptr_dQ(ptr_dQ_),
+          ptr_dK(ptr_dK_),
+          ptr_dV(ptr_dV_),
+          seq_q(seq_q_),
+          seq_k(seq_k_),
+          scale(scale_),
+          dropout_prob(dropout_prob_),
+          rand_seed(rand_seed_),
+          ptr_p(ptr_p_), // TODO: delete , just for debug
+          ptr_dS(ptr_dS_),
+          ptr_dP(ptr_dP_),
+          matP_base(matP_base_) {
+      dropout_enabled = dropout_prob > 0;
+    };
+    const uint32_t seq_q;
+    const uint32_t seq_k;
+    const float scale;
     // uint32_t seq_v;
-
-    uint32_t head_size = 128;
+    uint32_t head_size;
   };
 
   __XETLA_API KERNEL_FUNC void operator()(
@@ -295,7 +312,7 @@ struct fmha_block_t {
 
     tile_l_m_t tile_l, tile_m;
 
-    tile_payload_Tr_t tile_payload_Tr, tile_payload_Tr_1;
+    tile_payload_Tr_t tile_payload_Tr, tile_payload_Tr_1, tile_payload_Tr_2;
     tile_payload_l_m_t tile_payload_m;
 
     // tile_payload_Tr_t mat_payload_Tr;
@@ -307,7 +324,6 @@ struct fmha_block_t {
     matAcc_brxd_t matAcc_dO;
     matAcc_brxd_t matAcc_O;
     matAcc_brxd_t matAcc_dQ;
-
     // matP_t matP;
     worker_scope_t g(ei.get_local_linear_id());
 
@@ -357,6 +373,13 @@ struct fmha_block_t {
     uint32_t boundary_n_rc;
     uint32_t boundary_m_rc;
     uint32_t boundary_k_rc;
+
+    int32_t sg_idx = g.get_id() % tile_shape_brxd::wg_size_x;
+    int32_t sg_idy = g.get_id() / tile_shape_brxd::wg_size_x;
+
+    nbarrier_x.init_nbarrier(sg_idy, nbarrier_role::producer_consumer);
+    nbarrier_y.init_nbarrier(
+        tile_shape_brxd::wg_size_y + sg_idx, nbarrier_role::producer_consumer);
 
     // inner_loop
     // loop_idx = 0;
@@ -411,15 +434,15 @@ struct fmha_block_t {
       boundary_k_rc = start_k_rc + gemm_brxbc_block_tile_t::blocked_K;
 
       mem_desc_trans_k.init(
-          args.ptr_k,
+          {args.ptr_k},
           {boundary_n_rc, boundary_k_rc, args.head_size},
           {start_n_rc, start_k_rc});
       mem_desc_trans_v.init(
-          args.ptr_v,
+          {args.ptr_v},
           {boundary_n_rc, boundary_k_rc, args.head_size},
           {start_n_rc, start_k_rc});
       mem_desc_k.init(
-          args.ptr_k,
+          {args.ptr_k},
           {boundary_n_Tr, boundary_k_Tr, args.head_size},
           {start_n_Tr, start_k_Tr});
 
@@ -440,16 +463,14 @@ struct fmha_block_t {
           {boundary_n_Tr, boundary_m_Tr, args.head_size},
           {start_n_Tr + brgemm_brxd_t::get_matC_offset_x(g),
            start_m_Tr + brgemm_brxd_t::get_matC_offset_y(g)});
+      tile_payload_Tr.init(mem_desc_dQ);
+      tile_load(mat_dQ, tile_payload_Tr);
 
       tile_payload_Tr_1.init(mem_desc_dO);
       tile_load(mat_dO, tile_payload_Tr_1);
 
-      tile_payload_Tr.init(mem_desc_o);
-      tile_load(mat_O, tile_payload_Tr);
-
-      tile_payload_Tr.init(mem_desc_dQ);
-      tile_load(mat_dQ, tile_payload_Tr);
-
+      tile_payload_Tr_2.init(mem_desc_o);
+      tile_load(mat_O, tile_payload_Tr_2);
       // S𝑖𝑗 = 𝜏Q𝑖K𝑇𝑗
       {
         mem_desc_q.init(
@@ -469,6 +490,22 @@ struct fmha_block_t {
       /****************elemwise opertation******************/
       /****************MASK elemwise opertation******************/
       MASK::apply_mask(g, matAcc_p, i, loop_idx);
+      { // dropout generator
+        if (args.dropout_enabled) {
+          const uint64_t offset = ei.get_group(0) * args.seq_q * args.seq_q;
+          const uint32_t threshold =
+              uint32_t(args.dropout_prob * float(4294967296));
+          const float dropout_scale = 1.0f / (1.0f - args.dropout_prob);
+          const uint64_t subseq = i * gemm_brxbc_block_tile_t::blocked_M *
+                  gemm_brxbc_block_tile_t::blocked_N +
+              loop_idx * gemm_brxbc_block_tile_t::blocked_M +
+              ei.get_local_linear_id();
+
+          dropout_op.init(
+              args.rand_seed, subseq, offset, threshold, dropout_scale);
+          matAcc_p.reg = dropout_op.template process<float>(matAcc_p.reg);
+        }
+      }
       /****************SOFTMAX elemwise opertation***************/
       { // softmax
         mem_desc_l_m.init(
@@ -488,9 +525,6 @@ struct fmha_block_t {
         tile_load(tile_l, tile_payload_m);
         tile_broadcast_op<tile_div, matAcc_brxbc_t>(matAcc_p, tile_l.reg);
       }
-      /****************compute dropout mask**********************/
-      /****************DROP_OUT elemwise opertation**************/
-
       /****************elemwise opertation******************/
       if (debug && args.ptr_p != nullptr) {
         mem_desc_c.init(
@@ -506,7 +540,9 @@ struct fmha_block_t {
         // mem_desc_p.init(args.matP_base, {wg_tile_n, wg_tile_m, wg_tile_n},
         // {0, 0});
         epilogue_p(g, matAcc_p, mem_desc_p);
-        __esimd_barrier();
+        // __esimd_barrier();
+        nbarrier_x.arrive_wait();
+        nbarrier_y.arrive_wait();
         SW_BARRIER();
       }
 
@@ -536,6 +572,11 @@ struct fmha_block_t {
             mem_desc_trans_v,
             gemm_brxbc_block_tile_t::inner_loop_count);
         brgemm_brxbc(g, matAcc_dP, brgemm_brxbc_args);
+
+        // dropout bwd
+        if (args.dropout_enabled) {
+          matAcc_dP.reg = matAcc_dP.reg * dropout_op.get_mask();
+        }
       }
       if (debug && args.ptr_dP != nullptr) {
         mem_desc_c.init(
@@ -553,7 +594,8 @@ struct fmha_block_t {
         int32_t sg_idx = g.get_id() % tile_shape_brxd::wg_size_x;
         int32_t sg_idy = g.get_id() / tile_shape_brxd::wg_size_x;
 
-        uint32_t nbarrier_id = /*nbarrier_base*/ 0 + sg_idy;
+        uint32_t nbarrier_id = /*nbarrier_base*/ tile_shape_brxd::wg_size_x +
+            tile_shape_brxd::wg_size_y + sg_idy;
         uint32_t slm_base_addr = /*slm_base*/ 0 +
             sg_idy * tile_shape_brxd::wg_size_x *
                 tile_shape_brxd::sg_tile_size_y * sizeof(acc_T);
@@ -567,6 +609,7 @@ struct fmha_block_t {
         matAcc_D.init(0);
         tile_broadcast_op<tile_minus, matAcc_brxd_t>(matAcc_D, group_sum);
         matAcc_dP.reg = (matAcc_dP.reg + matAcc_D.reg) * matAcc_p.reg;
+        __esimd_barrier();
         // nbarrier.arrive_wait();
       }
       if (debug && args.ptr_dS != nullptr) {
@@ -581,15 +624,18 @@ struct fmha_block_t {
         mem_desc_p.init(
             args.matP_base, {wg_tile_n_rc, wg_tile_m_rc, wg_tile_n_rc}, {0, 0});
         epilogue_local(g, matAcc_dP, mem_desc_p);
-        __esimd_barrier();
+        // __esimd_barrier();
+        nbarrier_x.arrive_wait();
+        // nbarrier_y.arrive_wait();
       }
 
       mem_desc_p.init(
           args.matP_base, {wg_tile_k_Tr, wg_tile_m_Tr, wg_tile_k_Tr}, {0, 0});
 
-      matAcc_dQ.init(0);
       { // dQ_i = dQ_i + 𝜏dS_ij x K_j
         // TODO: mat_dQ.reg = /*𝜏*/matAcc_dQ.reg + mat_dQ.reg;
+        matAcc_dQ.reg = 0;
+        SW_BARRIER();
         brgemm_brxd_args.init(
             mem_desc_p, mem_desc_k, gemm_brxd_block_tile_t::inner_loop_count);
         brgemm_brxd(g, matAcc_dQ, brgemm_brxd_args);
@@ -599,13 +645,17 @@ struct fmha_block_t {
             {boundary_n_Tr, boundary_m_Tr, gemm_brxd_block_tile_t::blocked_N},
             {start_n_Tr, start_m_Tr});
         epilogue(g, matAcc_dQ, mem_desc_c);
-        __esimd_barrier();
+        // __esimd_barrier();
+        nbarrier_x.arrive_wait();
+        nbarrier_y.arrive_wait();
       }
       { // transpose dP in slm
         mem_desc_p.init(
             args.matP_base, {wg_tile_n_Tc, wg_tile_m_Tc, wg_tile_n_Tc}, {0, 0});
         epilogue_p(g, matAcc_dP, mem_desc_p);
-        __esimd_barrier();
+        // __esimd_barrier();
+        nbarrier_x.arrive_wait();
+        nbarrier_y.arrive_wait();
       }
 
       { // caculata dK

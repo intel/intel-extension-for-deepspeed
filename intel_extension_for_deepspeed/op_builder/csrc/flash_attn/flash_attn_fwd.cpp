@@ -14,6 +14,7 @@
  * limitations under the License.
  *******************************************************************************/
 
+
 #include "flash_attn.hpp"
 #include "flash_attn_fwd.hpp"
 
@@ -43,26 +44,15 @@ static int flash_scaled_attn_bf16_fwd_run(
     sycl::queue& queue,
     typename P::arguments_t& args) {
   P kernel(args);
-  sycl::nd_range<3> nd_range = kernel.get_nd_range();
+  sycl::nd_range<3> nd_range = P::utils::get_nd_range(kernel);
 
-  // auto evt = queue.submit([&](sycl::handler& cgh) {
-  //   cgh.parallel_for(nd_range, [=](sycl::nd_item<3> item) SYCL_ESIMD_KERNEL {
-  //     using namespace gpu::xetla;
-  //     using namespace gpu::xetla::group;
-  //     using namespace gpu::xetla::kernel;
-  //     using namespace gpu::xetla::subgroup;
-
-  //     xetla_exec_item<3> ei(item);
-  //     kernel.run(ei);
-  //   });
-  // });
-  // evt.wait();
   auto cgf = [&](sycl::handler& cgh) {
     cgh.parallel_for(nd_range, [=](sycl::nd_item<3> item) SYCL_ESIMD_KERNEL {
       using namespace gpu::xetla;
       using namespace gpu::xetla::group;
       using namespace gpu::xetla::kernel;
       using namespace gpu::xetla::subgroup;
+
       xetla_exec_item<3> ei(item);
       kernel.run(ei);
     });
@@ -95,32 +85,31 @@ bool flash_scaled_attn_bf16_fwd(
     const void* v_ptr, // pointer to V data buffer, [Bs, Hn, Sl, Hs]
     const void* drop_mask, // for dtopout mask if has, use uint8_t as data type
     const float dropout_scale, // dropout_scale = 1 / (1 - drop_p)
+    const uint64_t dropout_rand_seed, // dropout random generator seed
     const bool is_casual, // Indicate whether do mask_fill before softmax
     const bool store_softmax_out) {
   bool ret = false;
   if (Hs == 128) {
-    using flash_attn_fwd_h128 =
-        xpu::xetla::FLASH_ATTENTION_FWD_PARAM::tuning_parameter_t<
-            gpu::xetla::bf16,
-            gpu::xetla::bf16,
-            gpu::xetla::bf16,
-            gpu::xetla::bf16,
-            float,
-            float,
-            float,
-            float,
-            float,
-            true,
-            true,
-            xpu::xetla::FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global,
-            32,
-            128,
-            128,
-            128,
-            64,
-            32,
-            128,
-            16>;
+    using R = xpu::xetla::FLASH_ATTENTION_FWD_PARAM;
+    using param_dtype = R::param_dtype_default;
+    using param_impl = R::param_impl_t<
+        true,
+        true,
+        true,
+        false,
+        R::mat_buffer_type::global,
+        R::mat_buffer_type::reg,
+        32>;
+    using flash_attn_fwd_h128 = R::tuning_parameter_t<
+        param_dtype,
+        param_impl,
+        128,
+        128,
+        128,
+        32,
+        32,
+        128,
+        32>;
     using P = xpu::xetla::FLASH_ATTENTION_FWD_IMPL<flash_attn_fwd_h128>;
     using arguments_t = P::arguments_t;
     P::dtype_q* ptr_q = reinterpret_cast<P::dtype_q*>(const_cast<void*>(q_ptr));
@@ -133,33 +122,42 @@ bool flash_scaled_attn_bf16_fwd(
     P::dtype_b* ptr_b =
         reinterpret_cast<P::dtype_b*>(const_cast<void*>(out_buffer));
     arguments_t args(
-        Bs, Hn, Sl, hs_rsqrt_scale, ptr_q, ptr_k, ptr_v, ptr_o, ptr_m, ptr_b);
+        Bs,
+        Hn,
+        Sl,
+        Hs,
+        hs_rsqrt_scale,
+        dropout_rand_seed,
+        ptr_q,
+        ptr_k,
+        ptr_v,
+        ptr_o,
+        ptr_m,
+        ptr_b);
     flash_scaled_attn_bf16_fwd_run<P>(queue, args);
 
     ret = true;
   } else if (Hs == 96) {
-    using flash_attn_fwd_h96 =
-        xpu::xetla::FLASH_ATTENTION_FWD_PARAM::tuning_parameter_t<
-            gpu::xetla::bf16,
-            gpu::xetla::bf16,
-            gpu::xetla::bf16,
-            gpu::xetla::bf16,
-            float,
-            float,
-            float,
-            float,
-            float,
-            true,
-            true,
-            xpu::xetla::FLASH_ATTENTION_FWD_PARAM::pv_buffer_type::global,
-            32,
-            96,
-            128,
-            128,
-            64,
-            32,
-            128,
-            16>;
+    using R = xpu::xetla::FLASH_ATTENTION_FWD_PARAM;
+    using param_dtype = R::param_dtype_default;
+    using param_impl = R::param_impl_t<
+        true,
+        true,
+        true,
+        false,
+        R::mat_buffer_type::global,
+        R::mat_buffer_type::reg,
+        32>;
+    using flash_attn_fwd_h96 = R::tuning_parameter_t<
+        param_dtype,
+        param_impl,
+        96,
+        128,
+        128,
+        32,
+        32,
+        128,
+        32>;
     using P = xpu::xetla::FLASH_ATTENTION_FWD_IMPL<flash_attn_fwd_h96>;
     using arguments_t = P::arguments_t;
     P::dtype_q* ptr_q = reinterpret_cast<P::dtype_q*>(const_cast<void*>(q_ptr));
@@ -172,7 +170,18 @@ bool flash_scaled_attn_bf16_fwd(
     P::dtype_b* ptr_b =
         reinterpret_cast<P::dtype_b*>(const_cast<void*>(out_buffer));
     arguments_t args(
-        Bs, Hn, Sl, hs_rsqrt_scale, ptr_q, ptr_k, ptr_v, ptr_o, ptr_m, ptr_b);
+        Bs,
+        Hn,
+        Sl,
+        Hs,
+        hs_rsqrt_scale,
+        dropout_rand_seed,
+        ptr_q,
+        ptr_k,
+        ptr_v,
+        ptr_o,
+        ptr_m,
+        ptr_b);
     flash_scaled_attn_bf16_fwd_run<P>(queue, args);
 
     ret = true;
