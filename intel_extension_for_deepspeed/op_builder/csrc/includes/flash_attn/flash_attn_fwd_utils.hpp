@@ -27,18 +27,7 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils {
   static constexpr float inf = std::numeric_limits<float>::infinity();
 
   static sycl::nd_range<3> get_nd_range(
-      const FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>& kernel) {
-    uint32_t batch_size = kernel.batch_size;
-    uint32_t T_r = kernel.T_r;
-    uint32_t t_x = kernel.t_x;
-    uint32_t t_y = kernel.t_y;
-    // sycl::range<3> global_range {batch_size, T_r, T_c};
-    sycl::range<3> global_range{batch_size, T_r, 1};
-    sycl::range<3> local_range{1, t_y, t_x};
-    sycl::nd_range<3> nd_range(global_range * local_range, local_range);
-
-    return nd_range;
-  }
+      const FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>& kernel);
 
   template <int dims = 1>
   class work_item;
@@ -57,6 +46,9 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils {
 
   static __XETLA_API KERNEL_FUNC uint32_t matrix_size(uint32_t seq_len);
   static __XETLA_API KERNEL_FUNC uint32_t factor_size(uint32_t seq_len);
+
+  template <typename T1, typename T2>
+  static __XETLA_API KERNEL_FUNC T1 cap_val(T1 val, T2 ulp);
 
   template <uint32_t block_elems>
   struct calculate_new_ml_op_t {
@@ -98,6 +90,21 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils {
       uint32_t seq_len,
       matAcc_t& mask);
 };
+
+template <typename tuning_parameter_>
+sycl::nd_range<3> FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::
+    get_nd_range(const FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>& kernel) {
+  uint32_t batch_size = kernel.batch_size;
+  uint32_t T_r = kernel.T_r;
+  uint32_t t_x = kernel.t_x;
+  uint32_t t_y = kernel.t_y;
+  // sycl::range<3> global_range {batch_size, T_r, T_c};
+  sycl::range<3> global_range{batch_size, T_r, 1};
+  sycl::range<3> local_range{1, t_y, t_x};
+  sycl::nd_range<3> nd_range(global_range * local_range, local_range);
+
+  return nd_range;
+}
 
 template <typename tuning_parameter_>
 template <int dims>
@@ -404,6 +411,13 @@ __XETLA_API KERNEL_FUNC uint32_t
 FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::factor_size(
     uint32_t seq_len) {
   return seq_len * 2;
+}
+
+template <typename tuning_parameter_>
+template <typename T1, typename T2>
+__XETLA_API KERNEL_FUNC T1
+FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils::cap_val(T1 val, T2 ulp) {
+  return (val > ulp) ? ulp : val;
 }
 
 template <typename tuning_parameter_>
@@ -739,7 +753,7 @@ __XETLA_API KERNEL_FUNC int FLASH_ATTENTION_FWD_IMPL<
     }
   }
   {
-    // checker lower triangle
+    // check lower triangle
     // min(i_w * B_r + ii) > max(j_w * B_c + jj)
     if (i_w * m_w > j_w * n_w + n_w - 1) {
       return -1;
@@ -762,7 +776,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         uint32_t seq_len,
         matAcc_t& matM) {
   // mask upper triangle excluding diagonal:
-  // M_ij[ii, jj] += -inf, for i_g < j_g
+  // M_ij[ii, jj] = -inf, for i_g < j_g
   // where:
   //   - shape(M_ij) = [m_s, n_s]
   //   - i_g = g(f(ii, jj))[0]

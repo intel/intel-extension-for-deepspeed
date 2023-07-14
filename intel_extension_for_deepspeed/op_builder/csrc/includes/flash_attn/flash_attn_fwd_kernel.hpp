@@ -162,6 +162,7 @@ class FLASH_ATTENTION_FWD_IMPL {
     const uint32_t sequence_length;
     const uint32_t head_dim;
     const float hs_rsqrt_scale;
+    const float dropout_scale;
     const uint64_t dropout_rand_seed;
     dtype_q* ptr_q;
     dtype_k* ptr_k;
@@ -176,6 +177,7 @@ class FLASH_ATTENTION_FWD_IMPL {
         uint32_t sequence_length_,
         uint32_t head_dim_,
         float hs_rsqrt_scale_,
+        float dropout_scale_,
         uint64_t dropout_rand_seed_,
         dtype_q* ptr_q_,
         dtype_k* ptr_k_,
@@ -189,6 +191,7 @@ class FLASH_ATTENTION_FWD_IMPL {
           sequence_length(sequence_length_),
           head_dim(head_dim_),
           hs_rsqrt_scale(hs_rsqrt_scale_),
+          dropout_scale(dropout_scale_),
           dropout_rand_seed(dropout_rand_seed_),
           ptr_q(ptr_q_),
           ptr_k(ptr_k_),
@@ -215,6 +218,9 @@ class FLASH_ATTENTION_FWD_IMPL {
   const uint32_t seq_len;
   const uint32_t head_dim;
   const float hs_rsqrt_scale;
+  const float dropout_prob;
+  const float dropout_scale;
+  const uint32_t dropout_threshold;
   const uint64_t dropout_rand_seed;
   dtype_q* const ptr_q;
   dtype_k* const ptr_k;
@@ -234,6 +240,9 @@ class FLASH_ATTENTION_FWD_IMPL {
         seq_len(args.sequence_length),
         head_dim(args.head_dim),
         hs_rsqrt_scale(args.hs_rsqrt_scale),
+        dropout_prob(1.0f - 1.0f / args.dropout_scale),
+        dropout_scale(args.dropout_scale),
+        dropout_threshold(uint32_t(dropout_prob * float(4294967296))),
         dropout_rand_seed(args.dropout_rand_seed),
         ptr_q(args.ptr_q),
         ptr_k(args.ptr_k),

@@ -18,6 +18,27 @@
 #include "flash_attn.hpp"
 #include "flash_attn_fwd.hpp"
 
+/*******************************************************************************
+ * Copyright (c) 2022-2023 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
+
+#ifdef USE_XETLA
+#include "../../flash_attn.h"
+#endif
+#include "flash_attn_fwd.hpp"
+
 namespace xpu {
 namespace xetla {
 
@@ -57,6 +78,7 @@ static int flash_scaled_attn_bf16_fwd_run(
       kernel.run(ei);
     });
   };
+  // evt.wait();
   DPCPP_Q_SUBMIT(queue, cgf);
 
   return 0;
@@ -127,6 +149,7 @@ bool flash_scaled_attn_bf16_fwd(
         Sl,
         Hs,
         hs_rsqrt_scale,
+        dropout_scale,
         dropout_rand_seed,
         ptr_q,
         ptr_k,
@@ -175,6 +198,7 @@ bool flash_scaled_attn_bf16_fwd(
         Sl,
         Hs,
         hs_rsqrt_scale,
+        dropout_scale,
         dropout_rand_seed,
         ptr_q,
         ptr_k,
