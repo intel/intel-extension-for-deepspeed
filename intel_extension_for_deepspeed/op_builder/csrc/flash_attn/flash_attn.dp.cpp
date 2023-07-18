@@ -16,7 +16,6 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
                                           const bool causal,
                                           const bool return_softmax) {
     torch::Tensor output = torch::empty_like(q);
-    torch::Tensor out_buffer = torch::empty_like(q).to(at::kFloat);
     torch::Tensor softmax_res;
     if (return_softmax) {
         softmax_res = torch::empty({bs, head_number, seqlens, seqlens}, q.options()).to(at::kFloat);
@@ -30,7 +29,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
     void *k_ptr = (void *)k.data_ptr();
     void *v_ptr = (void *)v.data_ptr();
     void *output_ptr = (void *)output.data_ptr();
-    void *out_buffer_ptr = (void *)out_buffer.data_ptr();
+    void *out_buffer_ptr = nullptr;
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
     void *drop_mask_ptr = nullptr;
 
@@ -86,6 +85,7 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
     void *dv_ptr = (void *)dv.data_ptr();
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
     void *drop_mask_ptr = nullptr;
+    void *grad_softmax = nullptr;
 
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
     FlashAttention _flash_attn = FlashAttention();
@@ -94,7 +94,7 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
         dq_ptr,
         dk_ptr,
         dv_ptr,
-        nullptr,
+        grad_softmax,
         out_ptr,
         gradout_ptr,
         bs,

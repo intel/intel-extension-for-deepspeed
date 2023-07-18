@@ -49,7 +49,7 @@ class FlashAttnFunc(Function):
             ctx.dropout_p, ctx.dropout_seed, ctx.causal,
             ctx.return_softmax, softmax_res
         )
-        return dq, dk, dv, None, None, None, None, None
+        return dq, dk, dv, None, None, None, None
 
 
 class FlashAttentionBuilderObject():

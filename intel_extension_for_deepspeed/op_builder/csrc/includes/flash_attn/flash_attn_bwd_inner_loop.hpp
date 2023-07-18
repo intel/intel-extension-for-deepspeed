@@ -558,6 +558,8 @@ struct fmha_block_t {
             mem_desc_dO,
             gemm_bcxd_block_tile_t::inner_loop_count);
         brgemm_bcxd(g, matAcc_dV, brgemm_bcxd_args);
+        nbarrier_x.arrive_wait();
+        nbarrier_y.arrive_wait();
         SW_BARRIER();
       }
       { // dP_ij = dO_i x V_j_T

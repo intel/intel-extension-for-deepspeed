@@ -119,7 +119,7 @@ bool flash_scaled_attn_bf16_fwd(
         true,
         true,
         false,
-        R::mat_buffer_type::global,
+        R::mat_buffer_type::local,
         R::mat_buffer_type::reg,
         32>;
     using flash_attn_fwd_h128 = R::tuning_parameter_t<
@@ -168,7 +168,7 @@ bool flash_scaled_attn_bf16_fwd(
         true,
         true,
         false,
-        R::mat_buffer_type::global,
+        R::mat_buffer_type::local,
         R::mat_buffer_type::reg,
         32>;
     using flash_attn_fwd_h96 = R::tuning_parameter_t<
