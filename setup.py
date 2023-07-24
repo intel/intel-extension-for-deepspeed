@@ -2,6 +2,8 @@ from setuptools import setup
 import subprocess
 import os
 
+# test for ci, don't merge
+
 version_str = "0.9.4"
 git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
 git_hash_cmd = "git rev-parse --short HEAD"
