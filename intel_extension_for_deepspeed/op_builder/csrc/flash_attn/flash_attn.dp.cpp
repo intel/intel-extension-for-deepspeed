@@ -11,19 +11,20 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
                                           const uint32_t seqlens,
                                           const uint32_t head_size,
                                           const float softmax_scale,
-                                          const float dropout_p,
+                                          const float dropout_prob,
+                                          const float dropout_scale,
                                           const uint64_t dropout_rand_seed,
                                           const bool causal,
-                                          const bool return_softmax) {
+                                          const bool return_softmax,
+                                          const bool return_mask=false) {
     torch::Tensor output = torch::empty_like(q);
-    torch::Tensor softmax_res;
+    torch::Tensor softmax_res, dropout_mask;
     if (return_softmax) {
         softmax_res = torch::empty({bs, head_number, seqlens, seqlens}, q.options()).to(at::kFloat);
     }
     else {
         softmax_res = torch::empty({bs * head_number, 2, seqlens}, q.options()).to(at::kFloat);
     }
-    float dropout_scale = 1.0 / (1.0 - dropout_p);
 
     void *q_ptr = (void *)q.data_ptr();
     void *k_ptr = (void *)k.data_ptr();
@@ -32,6 +33,10 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
     void *out_buffer_ptr = nullptr;
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
     void *drop_mask_ptr = nullptr;
+    if (return_mask) {
+        dropout_mask = torch::empty({bs, head_number, seqlens, seqlens}, q.options()).to(at::kFloat);
+        drop_mask_ptr = (void *)dropout_mask.data_ptr();
+    }
 
     sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
     FlashAttention _flash_attn = FlashAttention();
@@ -49,12 +54,13 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
         k_ptr,
         v_ptr,
         drop_mask_ptr,
+        dropout_prob,
         dropout_scale,
         dropout_rand_seed,
         causal,
         return_softmax
     );
-    return {output, softmax_res};
+    return {output, softmax_res, dropout_mask};
 }
 
 std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
@@ -67,7 +73,8 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
                                           uint32_t seqlens,
                                           uint32_t head_size,
                                           const float softmax_scale,
-                                          const float dropout_p,
+                                          const float dropout_prob,
+                                          const float dropout_scale,
                                           const uint64_t dropout_rand_seed,
                                           const bool causal,
                                           const bool return_softmax,
@@ -107,7 +114,8 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
         v_ptr,
         softmax_res_ptr,
         drop_mask_ptr,
-        dropout_p,
+        dropout_prob,
+        dropout_scale,
         dropout_rand_seed,
         causal,
         return_softmax

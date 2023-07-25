@@ -60,9 +60,12 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::program {
       utils::work_item3& ei,
       uint32_t seq_len,
       uint32_t threshold,
+      uint32_t T_r,
+      uint32_t T_c,
       float dropout_scale,
       uint64_t rand_seed,
-      param_P::mat_in_t& matP);
+      param_P::mat_in_t& matP,
+      dtype_d* ptr_d);
 
   static __XETLA_API KERNEL_FUNC void init_ml(
       utils::work_item3& ei,
@@ -77,6 +80,7 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::program {
 
   static __XETLA_API KERNEL_FUNC void calculate_new_ml(
       utils::work_item3& ei,
+      param_P::rowmax_t& m_tilde_diff_exp_vec,
       param_P::rowmax_t& m_new_vec,
       param_P::rowmax_t& m_tilde_vec,
       param_P::rowmax_t& m_vec,
@@ -94,8 +98,7 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::program {
       param_O::mat_out_t& matO_new,
       param_P::mat_out_t& matP,
       dtype_v* ptr_v,
-      param_P::rowmax_t& m_new_vec,
-      param_P::rowmax_t& m_tilde_vec);
+      param_P::rowmax_t& m_tilde_diff_exp_vec);
 
   static __XETLA_API KERNEL_FUNC void load_O(
       utils::work_item3& ei,
@@ -136,7 +139,8 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::program {
       uint32_t head_num,
       uint32_t seq_len,
       dtype_o* ptr_o,
-      param_O::mat_out_t& matO);
+      param_O::mat_out_t& matO,
+      param_P::rowsum_t& l_vec);
 
   static __XETLA_API KERNEL_FUNC void store_global_ml(
       utils::work_item3& ei,
@@ -404,29 +408,64 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
     program::apply_dropout(
         utils::work_item3& ei,
         uint32_t seq_len,
+        uint32_t T_r,
+        uint32_t T_c,
         uint32_t threshold,
         float dropout_scale,
         uint64_t rand_seed,
-        param_P::mat_in_t& matP) {
-  gpu::xetla::dropout_fwd_t<
-      param_P::mat_in_t::tile_size_x * param_P::mat_in_t::tile_size_y>
-      dropout_op;
+        param_P::mat_in_t& matP,
+        dtype_d* ptr_d) {
   int batch_idx = ei.get_group(0);
   int i_w = ei.get_group(1);
   int j_w = ei.get_group(2);
 
-  const uint64_t offset = batch_idx * seq_len * seq_len;
+  static constexpr uint32_t rand_sz = param_S::m_s * param_S::n_s;
+  gpu::xetla::dropout_fwd_t<
+      rand_sz,
+      uint8_t,
+      tuning_parameter::fine_tune::dropout_random_simd>
+      dropout_op;
+
+  uint64_t offset = batch_idx;
 
   using mat_tile_shape = param_S::mat_tile_shape;
   using mat_worker_scope_t = mat_tile_shape::work_group_t;
   mat_worker_scope_t g(ei.get_local_linear_id());
   int32_t j_s = g.get_id() % mat_tile_shape::wg_size_x;
   int32_t i_s = g.get_id() / mat_tile_shape::wg_size_x;
-  uint64_t subseq = i_w * param_S::m_w * param_S::n_w + j_w * param_S::n_w +
-      ei.get_local_linear_id();
+  int coord_x = j_w * param_S::n_w + j_s * param_S::n_s;
+  int coord_y = i_w * param_S::m_w + i_s * param_S::m_s;
+  const uint64_t subseq = uint64_t(coord_y) << 32 | uint64_t(coord_x);
   dropout_op.init(rand_seed, subseq, offset, threshold, dropout_scale);
 
   matP.reg = dropout_op.template process<dtype_p>(matP.reg);
+
+  if constexpr (dump_dropout_mask) {
+    using matM_t = gpu::xetla::subgroup::
+        tile_t<uint8_t, typename param_P::mat_in_t::tile_desc>;
+    matM_t matM;
+    matM.reg = dropout_op.get_mask();
+
+    int start_m = batch_idx * seq_len + i_w * param_S::m_w;
+    int start_n = j_w * param_S::n_w;
+
+    using mem_desc_output_t = gpu::xetla::mem_desc_t<
+        dtype_d,
+        gpu::xetla::mem_layout::row_major,
+        gpu::xetla::mem_space::global>;
+    uint32_t boundary_m =
+        utils::cap_val(start_m + param_S::m_w, (batch_idx + 1) * seq_len);
+    uint32_t boundary_n = utils::cap_val(start_n + param_S::n_w, seq_len);
+    mem_desc_output_t md_dst(
+        {ptr_d}, {boundary_n, boundary_m, seq_len}, {start_n, start_m});
+    using epilogue_t = gpu::xetla::group::epilogue_t<
+        gpu::xetla::group::epilogue_policy_default<>,
+        typename param_S::tile_shape,
+        mem_desc_output_t>;
+    epilogue_t epilogue;
+    typename param_S::brgemm_t::work_group_t g(ei.get_local_linear_id());
+    epilogue(g, matM, md_dst);
+  }
 }
 
 template <typename tuning_parameter_>
@@ -454,6 +493,7 @@ template <typename tuning_parameter_>
 __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
     program::calculate_new_ml(
         utils::work_item3& ei,
+        param_P::rowmax_t& m_tilde_diff_exp_vec,
         param_P::rowmax_t& m_new_vec,
         param_P::rowmax_t& m_tilde_vec,
         param_P::rowmax_t& m_vec,
@@ -462,14 +502,23 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         param_P::rowsum_t& l_vec) {
   // 1. m_new_i = max(m_i, m_tilde_ij)
   // 2. l_new_i = sum(exp(m_i - m_new_i) * l_i, exp(m_tilde_ij - m_new_i) *
-  // l_tilde_ij) where:
+  // l_tilde_ij)
+  // 3. m_tilde_diff_exp_vec = exp(m_tilde_ij - m_new_i)
+  // where:
   //   - shape(m) = [B_r,]
   //   - shape(l) = [B_r,]
   static constexpr uint32_t block_elems = std::min({32, param_P::vec_length});
   using calculate_new_ml_op_t =
       utils::template calculate_new_ml_op_t<block_elems>;
   calculate_new_ml_op_t max_sum_op;
-  max_sum_op(m_new_vec, m_tilde_vec, m_vec, l_new_vec, l_tilde_vec, l_vec);
+  max_sum_op(
+      m_tilde_diff_exp_vec,
+      m_new_vec,
+      m_tilde_vec,
+      m_vec,
+      l_new_vec,
+      l_tilde_vec,
+      l_vec);
 }
 
 template <typename tuning_parameter_>
@@ -484,8 +533,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         param_O::mat_out_t& matO_new,
         param_P::mat_out_t& matP,
         dtype_v* ptr_v,
-        param_P::rowmax_t& m_new_vec,
-        param_P::rowmax_t& m_tilde_vec) {
+        param_P::rowmax_t& m_tilde_diff_exp_vec) {
   // 1. depending on pv_buffer flag, store P_ij to either:
   //   - global memory
   //   - shared local memory (slm)
@@ -551,9 +599,9 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
   }
   // 3. O_tilde_i_weighted = diag(exp(m_tilde_ij - m_new_i)) @ O_tilde_i
   {
-    using row_exp_mul_op_t = utils::row_exp_mul_op_t;
-    row_exp_mul_op_t row_exp_mul_op;
-    row_exp_mul_op(m_new_vec, m_tilde_vec, matO_new);
+    using row_mul_op_t = utils::row_mul_op_t;
+    row_mul_op_t row_mul_op;
+    row_mul_op(m_tilde_diff_exp_vec, matO_new);
   }
 }
 
@@ -579,15 +627,15 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         param_P::rowsum_t& l_new_vec,
         param_P::rowsum_t& l_vec) {
   // 1. O_i_weighted_unnorm = diag(l_i) @ O_i_weighted
-  {
+  if constexpr (disable_shortcut) {
     using row_mul_op_t = utils::row_mul_op_t;
     row_mul_op_t row_mul_op;
     row_mul_op(l_vec, matO);
   }
-  // 2. O_i_unnorm = O_i_weighted_unnorm + O_tilde_i_weighted
+  // 2. O_i_new_weighted_unnorm = O_i_weighted_unnorm + O_tilde_i_weighted
   { matO.reg = matO.reg + matO_new.reg; }
-  // 3. O_i = inv(diag(l_new_i)) @ O_i_unnorm
-  {
+  // 3. O_i_new = inv(diag(l_new_i)) @ O_i_new_weighted_unnorm
+  if constexpr (disable_shortcut) {
     using row_div_op_t = utils::row_div_op_t;
     row_div_op_t row_div_op;
     row_div_op(l_new_vec, matO);
@@ -682,7 +730,8 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         uint32_t head_num,
         uint32_t seq_len,
         dtype_o* ptr_o,
-        param_O::mat_out_t& matO) {
+        param_O::mat_out_t& matO,
+        param_P::rowsum_t& l_vec) {
   // const uint32_t B = batch_dim;
   // const uint32_t N = head_num;
   // const uint32_t F = seq_len;
@@ -719,6 +768,12 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
   //             transpose_store_tdecs, out_reg);
   // }
 
+  // O_i = inv(diag(l_i)) @ O_i_unnorm
+  if constexpr (!disable_shortcut) {
+    using row_div_op_t = utils::row_div_op_t;
+    row_div_op_t row_div_op;
+    row_div_op(l_vec, matO);
+  }
   // store O_i untransposed
   int batch_idx = ei.get_group(0);
   int start_m = batch_idx * seq_len + ei.get_group(1) * param_O::m_w;
@@ -733,7 +788,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
   mem_desc_output_t md_dst(
       {ptr_o}, {boundary_n, boundary_m, H}, {start_n, start_m});
   using epilogue_t = gpu::xetla::group::epilogue_t<
-      gpu::xetla::group::epilogue_policy_default<gpu::xetla::gpu_arch::Xe>,
+      gpu::xetla::group::epilogue_policy_default<>,
       typename param_O::tile_shape,
       mem_desc_output_t>;
   epilogue_t epilogue;
@@ -803,22 +858,20 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
 
   {
     typename param_P::mem_desc_output_m md_m;
-    int start_m = batch_idx * 2 * T_r + i_w;
-    int start_n = i_s * vec_length;
-    uint32_t boundary_m =
-        utils::cap_val(start_m + T_r, (batch_idx * 2 + 1) * T_r);
-    uint32_t boundary_n = utils::cap_val(start_n + B_r, B_r);
-    md_m.init({ptr_m}, {boundary_n, boundary_m, B_r}, {start_n, start_m});
+    int start_m = batch_idx * 2;
+    int start_n = i_w * B_r + i_s * vec_length;
+    uint32_t boundary_m = utils::cap_val(start_m, batch_idx * 2 + 1);
+    uint32_t boundary_n = utils::cap_val(start_n + B_r, seq_len);
+    md_m.init({ptr_m}, {boundary_n, boundary_m, seq_len}, {start_n, start_m});
     m_payload.init(md_m);
   }
   {
     typename param_P::mem_desc_output_m md_l;
-    int start_m = batch_idx * 2 * T_r + T_r + i_w;
-    int start_n = i_s * vec_length;
-    uint32_t boundary_m =
-        utils::cap_val(start_m + T_r, (batch_idx + 1) * 2 * T_r);
-    uint32_t boundary_n = utils::cap_val(start_n + B_r, B_r);
-    md_l.init({ptr_m}, {boundary_n, boundary_m, B_r}, {start_n, start_m});
+    int start_m = batch_idx * 2 + 1;
+    int start_n = i_w * B_r + i_s * vec_length;
+    uint32_t boundary_m = utils::cap_val(start_m, (batch_idx + 1) * 2);
+    uint32_t boundary_n = utils::cap_val(start_n + B_r, seq_len);
+    md_l.init({ptr_m}, {boundary_n, boundary_m, seq_len}, {start_n, start_m});
     l_payload.init(md_l);
   }
 }
@@ -882,6 +935,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
       typename param_S::mat_out_t matS;
       typename param_P::rowmax_t m_tilde_vec;
       typename param_P::rowsum_t l_tilde_vec;
+      typename param_P::rowmax_t m_tilde_diff_exp_vec;
       if constexpr (is_causal) {
         // TODO: currently supports causal mask only
         int t = utils::template check_diag_intersection<
@@ -915,16 +969,26 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
         program::apply_dropout(
             uei,
             seq_len,
+            T_r,
+            T_c,
             dropout_threshold,
             dropout_scale,
             dropout_rand_seed,
-            matP);
+            matP,
+            ptr_d);
       }
 
       program::load_ml(uei, ptr_m, m_vec, l_vec);
 
       program::calculate_new_ml(
-          uei, m_new_vec, m_tilde_vec, m_vec, l_new_vec, l_tilde_vec, l_vec);
+          uei,
+          m_tilde_diff_exp_vec,
+          m_new_vec,
+          m_tilde_vec,
+          m_vec,
+          l_new_vec,
+          l_tilde_vec,
+          l_vec);
 
       program::calculate_PV(
           uei,
@@ -936,8 +1000,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
           matO_new,
           matP,
           ptr_v,
-          m_new_vec,
-          m_tilde_vec);
+          m_tilde_diff_exp_vec);
     }
 
     program::load_O(uei, matO, m_new_vec, m_vec);
@@ -947,7 +1010,8 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::run(
 
     program::store_ml(uei, m_vec, m_new_vec, l_vec, l_new_vec);
   }
-  program::store_global_O(uei, batch_dim, head_num, seq_len, ptr_o, matO);
+  program::store_global_O(
+      uei, batch_dim, head_num, seq_len, ptr_o, matO, l_vec);
   program::store_global_ml(uei, ptr_m, m_store, m_payload, l_store, l_payload);
 }
 

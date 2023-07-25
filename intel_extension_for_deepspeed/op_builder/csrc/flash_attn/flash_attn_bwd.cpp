@@ -28,6 +28,7 @@ bool flash_scaled_attn_bf16_bwd(
                                // regenrated drop mask use uint8_t as data type
     const float
         dropout_prob, // dropout probility 0-1, if 0, there woukd be no dropout
+    const float dropout_scale,
     const uint64_t rand_seed, // regenrated drop mask by same random seed
     const bool is_casual, // Indicate whether do mask_fill before softmax
     const bool softmax_out_saved) // Indicate whether softmax result has been
@@ -52,6 +53,7 @@ bool flash_scaled_attn_bf16_bwd(
         softmax_workspace_ptr,
         drop_mask_ptr,
         dropout_prob,
+        dropout_scale,
         rand_seed);
   } else if (Hs == 96 && is_casual && !softmax_out_saved) {
     return flash_attn_bwd<kernel_traits<bf16, bf16, float, 96, 128>>(
@@ -72,6 +74,7 @@ bool flash_scaled_attn_bf16_bwd(
         softmax_workspace_ptr,
         drop_mask_ptr,
         dropout_prob,
+        dropout_scale,
         rand_seed);
   } else {
     return false;

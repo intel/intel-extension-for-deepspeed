@@ -51,11 +51,10 @@ bool flash_attn_bwd(
     const void* k_ptr, // saved K input from forward
     const void* v_ptr, // saved V input from forward
     const void* softmax_workspace_ptr, // saved softmax output or
-                                       // row_max/row_sum from forward
     const void* drop_mask_ptr =
         nullptr, // may be saved drop_mask from forward or regenrated drop mask
-                 // use uint8_t as data type
-    const float dropout_scale = 1.0f, // dropout_scale = 1 / (1 - drop_p)
+    const float dropout_prob = 0.0f, // dropout_scale = 1 / (1 - drop_p)
+    const float dropout_scale = 0.0f, // dropout_scale = 1 / (1 - drop_p)
     const uint64_t rand_seed = 0, // regenrated drop mask by same random seed
     const bool is_causal = true, // Indicate whether do mask_fill before softmax
     const void* causal_mask_ptr = nullptr,
@@ -70,7 +69,7 @@ bool flash_attn_bwd(
   using namespace gpu::xetla::group;
   using namespace gpu::xetla::kernel;
   using namespace gpu::xetla::subgroup;
-  float dropout_prob = 1 - 1 / dropout_scale;
+  // float dropout_prob = 1 - 1 / dropout_scale;
   uint32_t batch_num = Bs * Hn;
   // static constexpr uint32_t head_num = head_num_;
   static constexpr uint32_t d = kernel_traits::head_size;
@@ -99,6 +98,10 @@ bool flash_attn_bwd(
   int qkv_batch_offset = Sl * d;
   int lm_batch_offset = Sl;
 
+  // constexpr int matrix_m = Sl;
+  // constexpr int matrix_n = d;
+  // constexpr int matrix_k = Sl;
+
   constexpr int wg_tile_m = 128;
   constexpr int wg_tile_n = 128;
   constexpr int sg_tile_m = 16; // 32 thread
@@ -116,7 +119,7 @@ bool flash_attn_bwd(
   cl::sycl::nd_range<3> Range(GroupRange * LocalRange, LocalRange);
 
   try {
-    auto cgf = [&](handler& cgh) {
+    auto cgf = ([&](handler& cgh) {
       cgh.parallel_for<kernel_traits>(
           Range, [=](nd_item<3> item) SYCL_ESIMD_KERNEL {
             xetla_exec_item<3> ei(item);
@@ -125,7 +128,6 @@ bool flash_attn_bwd(
 
             uint32_t batch_id = ei.get_group(0);
             fmha_t fmha_bwd;
-
             fmha_args_t args(
                 (T*)q_ptr + batch_id * qkv_batch_offset,
                 (T*)k_ptr + batch_id * qkv_batch_offset,
@@ -143,15 +145,15 @@ bool flash_attn_bwd(
                 Sl,
                 hs_rsqrt_scale,
                 dropout_prob,
-                rand_seed
-                // matdP_ptr,
-                // matS_ptr,
-                // matP_ptr
-            );
+                dropout_scale,
+                rand_seed,
+                0, // slm_base
+                (T*)drop_mask_ptr + batch_id * Sl * Sl);
             args.head_size = d;
+
             fmha_bwd(ei, args);
           });
-    };
+    });
     DPCPP_Q_SUBMIT(queue, cgf);
     // gpu_event.wait();
     // prof.add_gpu_event(gpu_event);

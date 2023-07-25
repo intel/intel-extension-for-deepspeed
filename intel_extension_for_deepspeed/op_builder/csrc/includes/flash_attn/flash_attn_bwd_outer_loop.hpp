@@ -26,7 +26,6 @@ template <
     typename gemm_brxd_block_tile_t,
     typename gemm_bcxd_block_tile_t,
     typename gemm_brxbc_block_tile_t,
-    bool debug = false,
     uint32_t accum_stride = 16,
     uint32_t prefetch_distance = 3,
     uint32_t periodic_sync_interval = 0>
@@ -50,10 +49,9 @@ struct flash_attention_bwd {
       mem_desc_l_m_t,
       gemm_brxbc_block_tile_t,
       gemm_brxd_block_tile_t,
-      gemm_bcxd_block_tile_t,
-      debug>;
+      gemm_bcxd_block_tile_t>;
   using inner_loop_arguments = typename fmha_bwd_inner_loop_t::arguments_t;
-  using worker_scope_t = typename fmha_bwd_inner_loop_t::worker_scope_t;
+  // using worker_scope_t = typename fmha_bwd_inner_loop_t::worker_scope_t;
 
   // transposed [brxbc] while store into slm
   // using mem_desc_brxbc_trans_t = mem_desc_t<bf16, mem_layout::row_major,
@@ -70,15 +68,14 @@ struct flash_attention_bwd {
         T* ptr_dQ,
         T* ptr_dK,
         T* ptr_dV,
-        const uint32_t seq_q,
-        const uint32_t seq_k,
-        const float scale,
+        uint32_t seq_q,
+        uint32_t seq_k,
+        float scale,
         const float dropout_prob = 0,
+        const float dropout_scale = 0,
         const uint64_t rand_seed = 67280421310721,
-        T* ptr_p = nullptr,
-        T* ptr_dS = nullptr, // debug
-        T* ptr_dP = nullptr, // debug
-        const uint32_t matP_base = 0)
+        uint32_t matP_base = 0,
+        T* drop_mask_ptr = nullptr)
         : inner_loop_arguments(
               ptr_q,
               ptr_k,
@@ -94,21 +91,21 @@ struct flash_attention_bwd {
               seq_k,
               scale,
               dropout_prob,
+              dropout_scale,
               rand_seed,
-              ptr_p,
-              ptr_dS,
-              ptr_dP,
-              matP_base){};
+              matP_base,
+              drop_mask_ptr){};
   };
 
   __XETLA_API KERNEL_FUNC void operator()(
       xetla_exec_item<3> ei,
       arguments_t& args) {
     fmha_bwd_inner_loop_t fmha_inner_loop;
-    xetla_nbarrier_init<
-        gemm_brxd_block_tile_t::tile_shape_t::wg_size_x +
-        gemm_brxd_block_tile_t::tile_shape_t::wg_size_y * 2>();
     int bc = gemm_brxbc_block_tile_t::blocked_N;
+    xetla_nbarrier_init<
+        gemm_brxbc_block_tile_t::tile_shape_t::wg_size_x +
+        gemm_brxd_block_tile_t::tile_shape_t::wg_size_y +
+        gemm_brxbc_block_tile_t::tile_shape_t::wg_size_y>();
     int max_loop_steps = (args.seq_k + bc - 1) / bc;
     for (int loop_idx = 0; loop_idx < max_loop_steps; loop_idx++) {
       fmha_inner_loop(ei, args, loop_idx);

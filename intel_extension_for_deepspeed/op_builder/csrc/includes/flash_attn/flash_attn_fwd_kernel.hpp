@@ -50,13 +50,25 @@ class FLASH_ATTENTION_FWD_PARAM {
   using param_dtype_default = param_dtype_t<>;
 
   template <
+      typename dtype_d_ = float,
+      bool dump_dropout_mask_ = false,
+      bool disable_shortcut_ = false>
+  struct param_debug_t {
+    using dtype_d = dtype_d_;
+    static constexpr bool dump_dropout_mask = dump_dropout_mask_;
+    static constexpr bool disable_shortcut = disable_shortcut_;
+  };
+  using param_debug_default = param_debug_t<>;
+
+  template <
       bool is_causal_ = true,
       bool enable_mask_ = true,
       bool enable_dropout_ = true,
       bool prefetch_q_ = true,
-      mat_buffer_type pv_buffer_ = mat_buffer_type::global,
+      mat_buffer_type pv_buffer_ = mat_buffer_type::local,
       mat_buffer_type o_buffer_ = mat_buffer_type::reg,
-      int thread_num_ = 32>
+      int thread_num_ = 32,
+      typename debugging_impl_ = param_debug_default>
   struct param_impl_t {
     static constexpr bool is_causal = is_causal_;
     static constexpr bool enable_dropout = enable_dropout_;
@@ -67,6 +79,8 @@ class FLASH_ATTENTION_FWD_PARAM {
     static constexpr mat_buffer_type o_buffer = o_buffer_;
 
     static constexpr int thread_num = thread_num_;
+
+    using debug_param = debugging_impl_;
   };
   using param_impl_default = param_impl_t<>;
 
@@ -74,7 +88,8 @@ class FLASH_ATTENTION_FWD_PARAM {
       uint32_t matS_periodic_sync_interval_ = 8,
       uint32_t matS_prefetch_distance_ = 3,
       uint32_t matO_periodic_sync_interval_ = 8,
-      uint32_t matO_prefetch_distance_ = 3>
+      uint32_t matO_prefetch_distance_ = 3,
+      uint32_t dropout_random_simd_ = 16>
   struct param_fine_tune_t {
     static constexpr uint32_t matS_periodic_sync_interval =
         matS_periodic_sync_interval_;
@@ -82,6 +97,7 @@ class FLASH_ATTENTION_FWD_PARAM {
     static constexpr uint32_t matO_periodic_sync_interval =
         matO_periodic_sync_interval_;
     static constexpr uint32_t matO_prefetch_distance = matO_prefetch_distance_;
+    static constexpr uint32_t dropout_random_simd = dropout_random_simd_;
   };
   using param_fine_tune_default = param_fine_tune_t<>;
 
@@ -113,7 +129,7 @@ class FLASH_ATTENTION_FWD_PARAM {
     static constexpr bool enable_dropout = param_impl_::enable_dropout;
     // use global memory ptr_b for storing P_ij
     // slm version ignores ptr_b
-    // register version WIP
+    // TODO: register version
     static constexpr mat_buffer_type pv_buffer = param_impl_::pv_buffer;
     static constexpr mat_buffer_type o_buffer = param_impl_::o_buffer;
 
@@ -133,6 +149,7 @@ class FLASH_ATTENTION_FWD_PARAM {
     static constexpr int matO_k_s = matO_k_s_;
 
     using fine_tune = param_fine_tune_;
+    using debug_param = param_impl_::debug_param;
   };
 };
 
@@ -140,6 +157,7 @@ template <typename tuning_parameter_>
 class FLASH_ATTENTION_FWD_IMPL {
  public:
   using tuning_parameter = tuning_parameter_;
+  using debug_parameter = tuning_parameter::debug_param;
 
   using dtype_q = tuning_parameter::dtype_q;
   using dtype_k = tuning_parameter::dtype_k;
@@ -147,6 +165,7 @@ class FLASH_ATTENTION_FWD_IMPL {
   using dtype_o = tuning_parameter::dtype_o;
   using dtype_m = tuning_parameter::dtype_m;
   using dtype_b = tuning_parameter::dtype_b;
+  using dtype_d = debug_parameter::dtype_d;
 
   using dtype_acc = tuning_parameter::dtype_acc;
   using dtype_s = tuning_parameter::dtype_s;
@@ -162,14 +181,16 @@ class FLASH_ATTENTION_FWD_IMPL {
     const uint32_t sequence_length;
     const uint32_t head_dim;
     const float hs_rsqrt_scale;
+    const float dropout_prob;
     const float dropout_scale;
     const uint64_t dropout_rand_seed;
-    dtype_q* ptr_q;
-    dtype_k* ptr_k;
-    dtype_v* ptr_v;
-    dtype_o* ptr_o;
-    dtype_m* ptr_m;
-    dtype_b* ptr_b;
+    dtype_q* const ptr_q;
+    dtype_k* const ptr_k;
+    dtype_v* const ptr_v;
+    dtype_o* const ptr_o;
+    dtype_m* const ptr_m;
+    dtype_b* const ptr_b;
+    dtype_d* const ptr_d;
 
     arguments_t(
         uint32_t batch_dim_,
@@ -177,6 +198,7 @@ class FLASH_ATTENTION_FWD_IMPL {
         uint32_t sequence_length_,
         uint32_t head_dim_,
         float hs_rsqrt_scale_,
+        float dropout_prob_,
         float dropout_scale_,
         uint64_t dropout_rand_seed_,
         dtype_q* ptr_q_,
@@ -184,13 +206,15 @@ class FLASH_ATTENTION_FWD_IMPL {
         dtype_v* ptr_v_,
         dtype_o* ptr_o_,
         dtype_m* ptr_m_,
-        dtype_b* ptr_b_)
+        dtype_b* ptr_b_,
+        dtype_d* ptr_d_)
         : batch_dim(batch_dim_),
           head_num(head_num_),
           batch_size(batch_dim_ * head_num_),
           sequence_length(sequence_length_),
           head_dim(head_dim_),
           hs_rsqrt_scale(hs_rsqrt_scale_),
+          dropout_prob(dropout_prob_),
           dropout_scale(dropout_scale_),
           dropout_rand_seed(dropout_rand_seed_),
           ptr_q(ptr_q_),
@@ -198,7 +222,8 @@ class FLASH_ATTENTION_FWD_IMPL {
           ptr_v(ptr_v_),
           ptr_o(ptr_o_),
           ptr_m(ptr_m_),
-          ptr_b(ptr_b_){};
+          ptr_b(ptr_b_),
+          ptr_d(ptr_d_){};
   };
 
   // max head dim
@@ -207,6 +232,8 @@ class FLASH_ATTENTION_FWD_IMPL {
   static constexpr bool is_causal = tuning_parameter::is_causal;
   static constexpr bool enable_mask = tuning_parameter::enable_mask;
   static constexpr bool enable_dropout = tuning_parameter::enable_dropout;
+  static constexpr bool dump_dropout_mask = debug_parameter::dump_dropout_mask;
+  static constexpr bool disable_shortcut = debug_parameter::disable_shortcut;
   static constexpr mat_buffer_type pv_buffer = tuning_parameter::pv_buffer;
   static constexpr mat_buffer_type o_buffer = tuning_parameter::o_buffer;
   static constexpr bool prefetch_q = tuning_parameter::prefetch_q;
@@ -228,6 +255,7 @@ class FLASH_ATTENTION_FWD_IMPL {
   dtype_o* const ptr_o;
   dtype_m* const ptr_m;
   dtype_b* const ptr_b;
+  dtype_d* const ptr_d;
   const uint32_t T_r;
   const uint32_t T_c;
   const uint32_t t_y;
@@ -240,7 +268,7 @@ class FLASH_ATTENTION_FWD_IMPL {
         seq_len(args.sequence_length),
         head_dim(args.head_dim),
         hs_rsqrt_scale(args.hs_rsqrt_scale),
-        dropout_prob(1.0f - 1.0f / args.dropout_scale),
+        dropout_prob(args.dropout_prob),
         dropout_scale(args.dropout_scale),
         dropout_threshold(uint32_t(dropout_prob * float(4294967296))),
         dropout_rand_seed(args.dropout_rand_seed),
@@ -250,6 +278,7 @@ class FLASH_ATTENTION_FWD_IMPL {
         ptr_o(args.ptr_o),
         ptr_m(args.ptr_m),
         ptr_b(args.ptr_b),
+        ptr_d(args.ptr_d),
         T_r((args.sequence_length + B_r - 1) / B_r),
         T_c((args.sequence_length + B_c - 1) / B_c),
         t_y(param_S::m_w / param_S::m_s),
@@ -430,7 +459,7 @@ class FLASH_ATTENTION_FWD_IMPL {
             gpu::xetla::mem_layout::row_major,
             gpu::xetla::mem_space::local>>;
     using epilogue_t = gpu::xetla::group::epilogue_t<
-        gpu::xetla::group::epilogue_policy_default<gpu::xetla::gpu_arch::Xe>,
+        gpu::xetla::group::epilogue_policy_default<>,
         mat_tile_shape,
         mem_desc_output_p>;
     using store_nbarrier_t =

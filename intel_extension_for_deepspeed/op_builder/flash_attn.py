@@ -24,20 +24,22 @@ class FlashAttnFunc(Function):
         bs, hn, sl, hs = q.shape
         if softmax_scale is None:
             softmax_scale = hs ** (-0.5)
+        dropout_scale = 1.0 / (1.0 - dropout_p)
         dropout_seed = torch.seed()
 
-        out, softmax_res = flash_attn_module.flash_attn_fwd(
+        out, softmax_res, dropout_mask = flash_attn_module.flash_attn_fwd(
             q, k, v, bs, hn, sl, hs, softmax_scale,
-            dropout_p, dropout_seed, causal, return_softmax
+            dropout_p, dropout_scale, dropout_seed, causal, return_softmax, return_mask=True
         )
 
         ctx.save_for_backward(q, k, v, out, softmax_res)
         ctx.dropout_p = dropout_p
+        ctx.dropout_scale = dropout_scale
         ctx.dropout_seed = dropout_seed
         ctx.softmax_scale = softmax_scale
         ctx.causal = causal
         ctx.return_softmax = return_softmax
-        return out if not return_softmax else (out, softmax_res)
+        return out, dropout_mask if not return_softmax else (out, dropout_mask, softmax_res)
 
     @staticmethod
     def backward(ctx, dout, *args):
@@ -46,7 +48,7 @@ class FlashAttnFunc(Function):
 
         dq, dk, dv = flash_attn_module.flash_attn_bwd(
             dout, q, k, v, out, bs, hn, sl, hs, ctx.softmax_scale,
-            ctx.dropout_p, ctx.dropout_seed, ctx.causal,
+            ctx.dropout_p, ctx.dropout_scale, ctx.dropout_seed, ctx.causal,
             ctx.return_softmax, softmax_res
         )
         return dq, dk, dv, None, None, None, None
@@ -110,13 +112,13 @@ class FlashAttentionBuilder(SYCLOpBuilder):
         ]
 
     def extra_ldflags(self):
-        args = super().extra_ldflags()
+        args = ['-fsycl', '-fPIC', '-Wl,-export-dynamic']
         args += ['-fsycl-targets=spir64_gen']
         args += ["-Xs \"-device pvc -options '-vc-disable-indvars-opt -vc-codegen -doubleGRF -Xfinalizer -printregusage -Xfinalizer -enableBCR -DPASTokenReduction '\" "]
         return args
 
     def cxx_args(self):
-        args = super().cxx_args()
+        args = ['-fsycl', '-O3', '-g', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64']
         args += ['-fsycl-targets=spir64_gen']
         return args
 

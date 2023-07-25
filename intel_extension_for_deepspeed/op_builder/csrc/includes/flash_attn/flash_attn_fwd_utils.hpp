@@ -54,6 +54,7 @@ struct FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::utils {
   struct calculate_new_ml_op_t {
     template <typename rowmax_t, typename rowsum_t>
     __XETLA_API KERNEL_FUNC void operator()(
+        rowmax_t& m_tilde_diff_exp_vec,
         rowmax_t& m_new_vec,
         rowmax_t& m_tilde_vec,
         rowmax_t& m_vec,
@@ -425,6 +426,7 @@ template <uint32_t block_elems>
 template <typename rowmax_t, typename rowsum_t>
 __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
     utils::calculate_new_ml_op_t<block_elems>::operator()(
+        rowmax_t& m_tilde_diff_exp_vec,
         rowmax_t& m_new_vec,
         rowmax_t& m_tilde_vec,
         rowmax_t& m_vec,
@@ -452,6 +454,8 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
         l_tilde_vec.xetla_select<block_elems, 1>(i * block_elems);
     auto l_new_vec_blk =
         l_new_vec.xetla_select<block_elems, 1>(i * block_elems);
+    auto m_tilde_diff_exp_vec_blk =
+        m_tilde_diff_exp_vec.xetla_select<block_elems, 1>(i * block_elems);
     // 1. m_new_i = max(m_i, m_tilde_ij)
     m_new_vec_blk =
         gpu::xetla::xetla_max<dtype, block_elems>(m_vec_blk, m_tilde_vec_blk);
@@ -466,17 +470,18 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
       diff_m.merge(-utils::inf, m_mask);
     }
     diff_m = gpu::xetla::xetla_exp<dtype, block_elems>(diff_m);
-    gpu::xetla::xetla_vector<dtype, block_elems> diff_m_tilde =
-        m_tilde_vec_blk - m_new_vec_blk;
+    m_tilde_diff_exp_vec_blk = m_tilde_vec_blk - m_new_vec_blk;
     if constexpr (enable_mask) {
       // special handling for masking the whole row
       gpu::xetla::xetla_mask<block_elems> m_tilde_mask =
           m_tilde_vec_blk <= -utils::inf;
       m_tilde_mask |= m_new_vec_blk <= -utils::inf;
-      diff_m_tilde.merge(-utils::inf, m_tilde_mask);
+      m_tilde_diff_exp_vec_blk.merge(-utils::inf, m_tilde_mask);
     }
-    diff_m_tilde = gpu::xetla::xetla_exp<dtype, block_elems>(diff_m_tilde);
-    l_new_vec_blk = diff_m * l_vec_blk + diff_m_tilde * l_tilde_vec_blk;
+    m_tilde_diff_exp_vec_blk =
+        gpu::xetla::xetla_exp<dtype, block_elems>(m_tilde_diff_exp_vec_blk);
+    l_new_vec_blk =
+        diff_m * l_vec_blk + m_tilde_diff_exp_vec_blk * l_tilde_vec_blk;
   }
   static constexpr int remain_elems = N % block_elems;
   if constexpr (remain_elems != 0) {
@@ -487,6 +492,8 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
     auto l_vec_blk = l_vec.xetla_select<remain_elems, 1>(offset);
     auto l_tilde_vec_blk = l_tilde_vec.xetla_select<remain_elems, 1>(offset);
     auto l_new_vec_blk = l_new_vec.xetla_select<remain_elems, 1>(offset);
+    auto m_tilde_diff_exp_vec_blk =
+        m_tilde_diff_exp_vec.xetla_select<remain_elems, 1>(offset);
     // 1. m_new_i = max(m_i, m_tilde_ij)
     m_new_vec_blk =
         gpu::xetla::xetla_max<dtype, remain_elems>(m_vec_blk, m_tilde_vec_blk);
@@ -501,17 +508,18 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
       diff_m.merge(-utils::inf, m_mask);
     }
     diff_m = gpu::xetla::xetla_exp<dtype, remain_elems>(diff_m);
-    gpu::xetla::xetla_vector<dtype, remain_elems> diff_m_tilde =
-        m_tilde_vec_blk - m_new_vec_blk;
+    m_tilde_diff_exp_vec_blk = m_tilde_vec_blk - m_new_vec_blk;
     if constexpr (enable_mask) {
       // special handling for masking the whole row
       gpu::xetla::xetla_mask<block_elems> m_tilde_mask =
           m_tilde_vec_blk <= -utils::inf;
       m_tilde_mask |= m_new_vec_blk <= -utils::inf;
-      diff_m_tilde.merge(-utils::inf, m_tilde_mask);
+      m_tilde_diff_exp_vec_blk.merge(-utils::inf, m_tilde_mask);
     }
-    diff_m_tilde = gpu::xetla::xetla_exp<dtype, remain_elems>(diff_m_tilde);
-    l_new_vec_blk = diff_m * l_vec_blk + diff_m_tilde * l_tilde_vec_blk;
+    m_tilde_diff_exp_vec_blk =
+        gpu::xetla::xetla_exp<dtype, remain_elems>(m_tilde_diff_exp_vec_blk);
+    l_new_vec_blk =
+        diff_m * l_vec_blk + m_tilde_diff_exp_vec_blk * l_tilde_vec_blk;
   }
 }
 

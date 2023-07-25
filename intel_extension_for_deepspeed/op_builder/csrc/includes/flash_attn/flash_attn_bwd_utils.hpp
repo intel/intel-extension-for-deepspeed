@@ -25,13 +25,9 @@ template <
     typename tile_shape_,
     typename mem_desc_c_t_>
 class epilogue_transp_t {};
-template <
-    typename tile_op_t_,
-    typename update_method_,
-    typename tile_shape_,
-    typename mem_desc_c_t_>
+template <typename tile_op_t_, typename tile_shape_, typename mem_desc_c_t_>
 class epilogue_transp_t<
-    epilogue_policy_tile_op<tile_op_t_, update_method_, gpu_arch::Xe>,
+    epilogue_policy_tile_op<tile_op_t_, gpu_arch::Xe>,
     tile_shape_,
     mem_desc_c_t_> {
  public:
@@ -141,11 +137,6 @@ struct gemm_block_tile_t {
       (blocked_K + sg_tile_k - 1) / sg_tile_k;
   using tile_shape_t =
       tile_shape_t<wg_tile_n_, wg_tile_m_, sg_tile_n_, sg_tile_m_>;
-  // static constexpr int wg_tile_m = wg_tile_m_, wg_tile_n = wg_tile_n_,
-  // wg_tile_k = wg_tile_k_;
-
-  // static constexpr int sg_tile_m = sg_tile_m_, sg_tile_n = sg_tile_n_,
-  // sg_tile_k = sg_tile_k_;
 };
 
 template <
@@ -182,9 +173,10 @@ struct casual_mask {
     if (start_row > start_col + sg_tile_n - 1) {
       return;
     }
-
+#pragma unroll
     for (int ii = 0; ii < sg_tile_m; ii++) {
       int cur_row = start_row + ii;
+#pragma unroll
       for (int jj = 0; jj < sg_tile_n; jj++) {
         int cur_col = start_col + jj;
         int cur_block_linear_id =
