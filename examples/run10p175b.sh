@@ -1,8 +1,8 @@
 export WORLD_SIZE=${WORLD_SIZE:-48}
 export MICRO_BATCH=${MICRO_BATCH:-1}
-export NLAYERS=${NLAYERS:-44}
-export HIDDEN=${HIDDEN:-6144}
-export HEADS=${HEADS:-64}
+export NLAYERS=${NLAYERS:-10}
+export HIDDEN=${HIDDEN:-12288}
+export HEADS=${HEADS:-96}
 export SEQ=${SEQ:-2048}
 export TRAIN_ITER=${TRAIN_ITER:-20}
 export ZERO_STAGE=${ZERO_STAGE:-3}

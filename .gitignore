@@ -3,3 +3,5 @@ build.log
 dist
 intel_extension_for_deepspeed.egg-info
 *.pyc
+cscope*
+tags

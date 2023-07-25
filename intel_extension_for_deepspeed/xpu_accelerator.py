@@ -150,6 +150,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def is_fp16_supported(self):
         return True
 
+    def supported_dtypes(self):
+        return [torch.float, torch.half, torch.bfloat16]
+
     # Tensor operations
 
     @property
