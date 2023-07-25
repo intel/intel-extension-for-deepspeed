@@ -6,8 +6,8 @@ DATA_PATH=dataset/BookCorpusDataset_text_document
 DTYPE=${DTYPE:-bf16}
 
 # Hostfile path
-hostfile_deepspeed=${PWD}/examples/intel/hostfile_deepspeed
-hostfile_mpich=${PWD}/examples/intel/hostfile_mpich
+hostfile_deepspeed=$LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_deepspeed
+hostfile_mpich=$LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_mpich
 
 # Disabling tensor/pipeline parallelism
 TP=${TP:-1}
@@ -26,8 +26,8 @@ GLOBAL_BATCH=${GLOBAL_BATCH:-96}
 
 ZERO_STAGE=${ZERO_STAGE:-2}
 
-DS_CONFIG=${PWD}/examples/intel/"ds_stage${ZERO_STAGE}_mb${MICRO_BATCH}_gb${GLOBAL_BATCH}_pp${PP}_${DTYPE}.json"
-bash ${PWD}/examples/intel/generate_config.sh ${DS_CONFIG} || exit 1
+DS_CONFIG=$LLM_DK_DIR/intel-extension-for-deepspeed/examples/"ds_stage${ZERO_STAGE}_mb${MICRO_BATCH}_gb${GLOBAL_BATCH}_pp${PP}_${DTYPE}.json"
+bash $LLM_DK_DIR/intel-extension-for-deepspeed/examples/generate_config.sh ${DS_CONFIG} || exit 1
 
 OUTPUT_DIR=logs/ds_stage${ZERO_STAGE}_nl${NLAYERS}_hs${HIDDEN}_mb${MICRO_BATCH}_seq${SEQ}_gb${GLOBAL_BATCH}_pp${PP}_tp${TP}_${DTYPE}_`date +%m%d%H%M%S`_${HOSTNAME}
 mkdir -p $OUTPUT_DIR
@@ -86,6 +86,7 @@ run_cmd="
     --no-masked-softmax-fusion \
     --no-bias-gelu-fusion \
     --no-bias-dropout-fusion \
+    --no-gradient-accumulation-fusion \
     --distributed-backend $CCL \
     --num-workers 0 \
     $custom_args \
