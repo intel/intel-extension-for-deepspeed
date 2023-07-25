@@ -20,15 +20,15 @@ usage()
 }
 
 if [ $# -gt 0 ]; then
-    cat /dev/null > ${PWD}/examples/intel/hostfile_mpich
-    cat /dev/null > ${PWD}/examples/intel/hostfile_deepspeed
+    cat /dev/null > $LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_mpich
+    cat /dev/null > $LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_deepspeed
     mid=" slots="
     slots=12
     for i in "$@"; do
         host=$i
         host_slot="$i$mid$slots"
-        echo $host>>${PWD}/examples/intel/hostfile_mpich
-        echo $host_slot>>${PWD}/examples/intel/hostfile_deepspeed
+        echo $host>>$LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_mpich
+        echo $host_slot>>$LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_deepspeed
     done
 else
     usage
