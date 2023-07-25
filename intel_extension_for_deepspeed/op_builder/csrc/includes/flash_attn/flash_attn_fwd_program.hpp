@@ -459,7 +459,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
     mem_desc_output_t md_dst(
         {ptr_d}, {boundary_n, boundary_m, seq_len}, {start_n, start_m});
     using epilogue_t = gpu::xetla::group::epilogue_t<
-        gpu::xetla::group::epilogue_policy_default<>,
+        gpu::xetla::group::epilogue_policy_default<gpu::xetla::gpu_arch::Xe>,
         typename param_S::tile_shape,
         mem_desc_output_t>;
     epilogue_t epilogue;
@@ -788,7 +788,7 @@ __XETLA_API KERNEL_FUNC void FLASH_ATTENTION_FWD_IMPL<tuning_parameter_>::
   mem_desc_output_t md_dst(
       {ptr_o}, {boundary_n, boundary_m, H}, {start_n, start_m});
   using epilogue_t = gpu::xetla::group::epilogue_t<
-      gpu::xetla::group::epilogue_policy_default<>,
+      gpu::xetla::group::epilogue_policy_default<gpu::xetla::gpu_arch::Xe>,
       typename param_O::tile_shape,
       mem_desc_output_t>;
   epilogue_t epilogue;

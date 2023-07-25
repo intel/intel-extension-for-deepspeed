@@ -459,7 +459,7 @@ class FLASH_ATTENTION_FWD_IMPL {
             gpu::xetla::mem_layout::row_major,
             gpu::xetla::mem_space::local>>;
     using epilogue_t = gpu::xetla::group::epilogue_t<
-        gpu::xetla::group::epilogue_policy_default<>,
+        gpu::xetla::group::epilogue_policy_default<gpu::xetla::gpu_arch::Xe>,
         mat_tile_shape,
         mem_desc_output_p>;
     using store_nbarrier_t =

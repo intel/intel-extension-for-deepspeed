@@ -155,22 +155,34 @@ struct fmha_block_t {
       gpu_arch::Xe>;
 
   using epilogue_p_t = epilogue_transp_t<
-      epilogue_policy_tile_op<chained_tile_op_t<>, gpu_arch::Xe>,
+      epilogue_policy_tile_op<
+          chained_tile_op_t<>,
+          result_overwrite,
+          gpu_arch::Xe>,
       tile_shape_brxbc,
       mem_desc_brxbc_t>;
 
   using epilogue_global_t = epilogue_t<
-      epilogue_policy_tile_op<chained_tile_op_t<>, gpu_arch::Xe>,
+      epilogue_policy_tile_op<
+          chained_tile_op_t<>,
+          result_overwrite,
+          gpu_arch::Xe>,
       tile_shape_brxd,
       mem_desc_c_t>;
 
   using epilogue_brxbc_t = epilogue_t<
-      epilogue_policy_tile_op<chained_tile_op_t<>, gpu_arch::Xe>,
+      epilogue_policy_tile_op<
+          chained_tile_op_t<>,
+          result_overwrite,
+          gpu_arch::Xe>,
       tile_shape_brxbc,
       mem_desc_c_t>;
 
   using epilogue_local_t = epilogue_t<
-      epilogue_policy_tile_op<chained_tile_op_t<>, gpu_arch::Xe>,
+      epilogue_policy_tile_op<
+          chained_tile_op_t<>,
+          result_overwrite,
+          gpu_arch::Xe>,
       tile_shape_brxbc,
       mem_desc_brxbc_t>;
 

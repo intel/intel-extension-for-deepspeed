@@ -25,9 +25,13 @@ template <
     typename tile_shape_,
     typename mem_desc_c_t_>
 class epilogue_transp_t {};
-template <typename tile_op_t_, typename tile_shape_, typename mem_desc_c_t_>
+template <
+    typename tile_op_t_,
+    typename update_method_,
+    typename tile_shape_,
+    typename mem_desc_c_t_>
 class epilogue_transp_t<
-    epilogue_policy_tile_op<tile_op_t_, gpu_arch::Xe>,
+    epilogue_policy_tile_op<tile_op_t_, update_method_, gpu_arch::Xe>,
     tile_shape_,
     mem_desc_c_t_> {
  public:
