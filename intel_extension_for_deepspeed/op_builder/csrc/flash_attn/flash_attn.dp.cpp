@@ -16,7 +16,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
                                           const uint64_t dropout_rand_seed,
                                           const bool causal,
                                           const bool return_softmax,
-                                          const bool return_mask=false) {
+                                          const bool return_mask) {
     torch::Tensor output = torch::empty_like(q);
     torch::Tensor softmax_res, dropout_mask;
     if (return_softmax) {
@@ -91,6 +91,7 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
     void *dk_ptr = (void *)dk.data_ptr();
     void *dv_ptr = (void *)dv.data_ptr();
     void *softmax_res_ptr = (void *)softmax_res.data_ptr();
+    // void *drop_mask_ptr = (void *)dropout_mask.data_ptr();
     void *drop_mask_ptr = nullptr;
     void *grad_softmax = nullptr;
 

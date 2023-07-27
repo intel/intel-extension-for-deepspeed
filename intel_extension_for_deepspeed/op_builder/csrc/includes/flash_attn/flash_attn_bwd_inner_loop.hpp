@@ -333,6 +333,7 @@ struct fmha_block_t {
 
     // tile_payload_Tr_t mat_payload_Tr;
     matAcc_brxbc_t matAcc_p;
+    matAcc_brxbc_t matAcc_p_drop;
     matAcc_bcxd_t matAcc_dV;
     matAcc_bcxd_t matAcc_dK;
     matAcc_brxbc_t matAcc_dP;
@@ -510,39 +511,6 @@ struct fmha_block_t {
       /****************elemwise opertation******************/
       /****************MASK elemwise opertation******************/
       MASK::apply_mask(g_brxbc, matAcc_p, inner_loop_idx, outer_loop_idx);
-      { // dropout generator
-        if (args.dropout_enabled) {
-          int batch_idx = ei.get_group(0);
-          using sg_shape = gemm_brxbc_block_tile_t::tile_shape_t;
-          int32_t j_s = g_brxbc.get_id() % sg_shape::wg_size_x;
-          int32_t i_s = g_brxbc.get_id() / sg_shape::wg_size_x;
-          int32_t i_w = inner_loop_idx;
-          int32_t j_w = outer_loop_idx;
-          int coord_y = i_w * gemm_brxbc_block_tile_t::blocked_M +
-              i_s * sg_shape::sg_tile_size_y;
-          int coord_x = j_w * gemm_brxbc_block_tile_t::blocked_N +
-              j_s * sg_shape::sg_tile_size_x;
-
-          const uint64_t subseq = uint64_t(coord_y) << 32 | uint64_t(coord_x);
-          const uint64_t offset = ei.get_group(0);
-          const uint32_t threshold =
-              uint32_t(args.dropout_prob * float(4294967296));
-          // const float args.dropout_scale = 1.0f / (1.0f - args.dropout_prob);
-
-          dropout_op.init(
-              args.rand_seed, subseq, offset, threshold, args.dropout_scale);
-          matAcc_p.reg = dropout_op.template process<float>(matAcc_p.reg);
-
-          if (args.ptr_dropmask != nullptr) {
-            matAcc_dP.reg = dropout_op.get_mask();
-            mem_desc_c.init(
-                args.ptr_dropmask,
-                {boundary_n_rc, boundary_m_rc, args.seq_k},
-                {start_n_rc, start_m_rc});
-            epilogue(g_brxbc, matAcc_dP, mem_desc_c);
-          }
-        }
-      }
       /****************SOFTMAX elemwise opertation***************/
       { // softmax
         mem_desc_l_m.init(
@@ -562,12 +530,35 @@ struct fmha_block_t {
         tile_load(tile_l, tile_payload_m);
         tile_broadcast_op<tile_div, matAcc_brxbc_t>(matAcc_p, tile_l.reg);
       }
+      { // dropout generator
+        int batch_idx = ei.get_group(0);
+        using sg_shape = gemm_brxbc_block_tile_t::tile_shape_t;
+        int32_t j_s = g_brxbc.get_id() % sg_shape::wg_size_x;
+        int32_t i_s = g_brxbc.get_id() / sg_shape::wg_size_x;
+        int32_t i_w = inner_loop_idx;
+        int32_t j_w = outer_loop_idx;
+        int coord_y = i_w * gemm_brxbc_block_tile_t::blocked_M +
+            i_s * sg_shape::sg_tile_size_y;
+        int coord_x = j_w * gemm_brxbc_block_tile_t::blocked_N +
+            j_s * sg_shape::sg_tile_size_x;
+
+        const uint64_t subseq = uint64_t(coord_y) << 32 | uint64_t(coord_x);
+        const uint64_t offset = ei.get_group(0);
+        const uint32_t threshold =
+            uint32_t(args.dropout_prob * float(4294967296));
+        // const float args.dropout_scale = 1.0f / (1.0f - args.dropout_prob);
+
+        dropout_op.init(
+            args.rand_seed, subseq, offset, threshold, args.dropout_scale);
+        // matAcc_p_drop.init(0);
+        matAcc_p_drop.reg = dropout_op.template process<float>(matAcc_p.reg);
+      }
       /****************elemwise opertation******************/
       // transpose P in slm
       {
         mem_desc_p.init(
             args.matP_base, {wg_tile_n_rc, wg_tile_m_rc, wg_tile_n_rc}, {0, 0});
-        epilogue_p(g_brxbc, matAcc_p, mem_desc_p);
+        epilogue_p(g_brxbc, matAcc_p_drop, mem_desc_p);
         // __esimd_barrier();
         nbarrier_x.arrive_wait();
         nbarrier_y.arrive_wait();
@@ -586,6 +577,8 @@ struct fmha_block_t {
             mem_desc_dO,
             gemm_bcxd_block_tile_t::inner_loop_count);
         brgemm_bcxd(g_bcxd, matAcc_dV, brgemm_bcxd_args);
+        nbarrier_x.arrive_wait();
+        nbarrier_y.arrive_wait();
         SW_BARRIER();
       }
       { // dP_ij = dO_i x V_j_T
@@ -602,9 +595,7 @@ struct fmha_block_t {
         brgemm_brxbc(g_brxbc, matAcc_dP, brgemm_brxbc_args);
 
         // dropout bwd
-        if (args.dropout_enabled) {
-          matAcc_dP.reg = matAcc_dP.reg * dropout_op.get_mask();
-        }
+        matAcc_dP.reg = matAcc_dP.reg * (1 - dropout_op.get_mask()) * args.dropout_scale;
       }
       /**************Dropout bwd elemwise multiply*****************/
       { // D_i= rowsum(dO_i * O_i)

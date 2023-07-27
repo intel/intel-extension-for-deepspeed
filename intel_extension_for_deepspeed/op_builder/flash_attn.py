@@ -29,7 +29,7 @@ class FlashAttnFunc(Function):
 
         out, softmax_res, dropout_mask = flash_attn_module.flash_attn_fwd(
             q, k, v, bs, hn, sl, hs, softmax_scale,
-            dropout_p, dropout_scale, dropout_seed, causal, return_softmax, return_mask=True
+            dropout_p, dropout_scale, dropout_seed, causal, return_softmax, True
         )
 
         ctx.save_for_backward(q, k, v, out, softmax_res)
