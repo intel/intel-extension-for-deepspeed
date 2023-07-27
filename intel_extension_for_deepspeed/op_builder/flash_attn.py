@@ -13,7 +13,7 @@ flash_attn_module = None
 class FlashAttnFunc(Function):
 
     @staticmethod
-    def forward(ctx, q, k, v, dropout_p, softmax_scale, causal, return_softmax):
+    def forward(ctx, q, k, v, dropout_p, softmax_scale, causal, return_softmax, return_mask):
         """
         Shape of qkv and out: [Bs, Hn, Sl, Hs]
         Bs: batch size
@@ -27,9 +27,9 @@ class FlashAttnFunc(Function):
         dropout_scale = 1.0 / (1.0 - dropout_p)
         dropout_seed = torch.seed()
 
-        out, softmax_res, dropout_mask = flash_attn_module.flash_attn_fwd(
+        out, softmax_res = flash_attn_module.flash_attn_fwd(
             q, k, v, bs, hn, sl, hs, softmax_scale,
-            dropout_p, dropout_scale, dropout_seed, causal, return_softmax, True
+            dropout_p, dropout_scale, dropout_seed, causal, return_softmax, return_mask
         )
 
         ctx.save_for_backward(q, k, v, out, softmax_res)
@@ -39,7 +39,7 @@ class FlashAttnFunc(Function):
         ctx.softmax_scale = softmax_scale
         ctx.causal = causal
         ctx.return_softmax = return_softmax
-        return out, dropout_mask if not return_softmax else (out, dropout_mask, softmax_res)
+        return out if not return_softmax else (out, softmax_res)
 
     @staticmethod
     def backward(ctx, dout, *args):
@@ -51,7 +51,7 @@ class FlashAttnFunc(Function):
             ctx.dropout_p, ctx.dropout_scale, ctx.dropout_seed, ctx.causal,
             ctx.return_softmax, softmax_res
         )
-        return dq, dk, dv, None, None, None, None
+        return dq, dk, dv, None, None, None, None, None
 
 
 class FlashAttentionBuilderObject():
@@ -60,10 +60,10 @@ class FlashAttentionBuilderObject():
     
     # general functions
     def flash_attn_func(self, q, k, v,
-            dropout_p, softmax_scale, causal, return_softmax):
+            dropout_p, softmax_scale, causal, return_softmax=False, return_mask=False):
         if q.shape[-1] in [128, 96] and q.dtype is torch.bfloat16:
             return FlashAttnFunc.apply(q, k, v,
-                dropout_p, softmax_scale, causal, return_softmax)
+                dropout_p, softmax_scale, causal, return_softmax, return_mask)
         else:
             return self.flash_attn_fwd_func(q, k, v, dropout_p)
 

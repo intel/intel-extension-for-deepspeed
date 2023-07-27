@@ -60,7 +60,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
         causal,
         return_softmax
     );
-    return {output, softmax_res, dropout_mask};
+    return {output, softmax_res};
 }
 
 std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
