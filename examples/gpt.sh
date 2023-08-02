@@ -86,6 +86,7 @@ run_cmd="
     --no-masked-softmax-fusion \
     --no-bias-gelu-fusion \
     --no-bias-dropout-fusion \
+    --use-rotary-position-embeddings \
     --no-gradient-accumulation-fusion \
     --distributed-backend $CCL \
     --num-workers 0 \
