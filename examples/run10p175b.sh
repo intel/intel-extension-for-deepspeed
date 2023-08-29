@@ -13,4 +13,4 @@ export GRAD_ACC_STEPS=${GRAD_ACC_STEPS:-1}
 export GLOBAL_BATCH=$(( $WORLD_SIZE * $MICRO_BATCH * $GRAD_ACC_STEPS / $TP / $PP ))
 
 echo "!!!please use generate_hostfile.sh to set hostfile for $((${WORLD_SIZE}/12)) nodes before training"
-bash $LLM_DK_DIR/intel-extension-for-deepspeed/examples/gpt.sh
+bash $LLM_DK_DIR/intel-extension-for-deepspeed/examples/gpt.sh $@
