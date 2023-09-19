@@ -6,3 +6,4 @@ from .transformer import TransformerBuilder
 from .transformer_inference import InferenceBuilder
 from .quantizer import QuantizerBuilder
 from .utils import UtilsBuilder
+from .async_io import AsyncIOBuilder
