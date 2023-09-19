@@ -13,4 +13,4 @@ export PP=${PP:-1}
 export GRAD_ACC_STEPS=${GRAD_ACC_STEPS:-1}
 export GLOBAL_BATCH=$(( $WORLD_SIZE * $MICRO_BATCH * $GRAD_ACC_STEPS / $TP / $PP ))
 
-bash $LLM_DK_DIR/intel-extension-for-deepspeed/examples/gpt.sh --no-query-key-layer-scaling
+bash $LLM_DK_DIR/intel-extension-for-deepspeed/examples/gpt.sh --no-query-key-layer-scaling $@

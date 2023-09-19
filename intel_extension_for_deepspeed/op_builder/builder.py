@@ -23,7 +23,7 @@ class SYCLOpBuilder(OpBuilder):
             extra_compile_args={
                 'cxx': self.strip_empty_entries(self.cxx_args()),
             },
-            extra_link_args=self.strip_empty_entries(self.extra_ldflags()) + self.fixed_aotflags())
+            extra_link_args=self.strip_empty_entries(self.fixed_aotflags()))
         return dpcpp_ext
 
     def version_dependent_macros(self):
