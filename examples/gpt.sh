@@ -3,7 +3,7 @@
 VOCAB_FILE=dataset/gpt2-vocab.json
 MERGE_FILE=dataset/gpt2-merges.txt
 DATA_PATH=dataset/BookCorpusDataset_text_document
-DS_CONFIG=${DS_CONFIG:-${PWD}/"ds_stage_${ZERO_STAGE}_mb${MICRO_BATCH}_gb${GLOBAL_BATCH}_bf16.json"}
+DTYPE=${DTYPE:-bf16}
 
 # Hostfile path
 hostfile_deepspeed=$LLM_DK_DIR/intel-extension-for-deepspeed/examples/hostfile_deepspeed
@@ -20,13 +20,16 @@ HEADS=${HEADS:-32}
 SEQ=${SEQ:-2048}
 TRAIN_ITER=${TRAIN_ITER:-50}
 
-
 WORLD_SIZE=${WORLD_SIZE:-12}
 MICRO_BATCH=${MICRO_BATCH:-8}
 GLOBAL_BATCH=${GLOBAL_BATCH:-96}
 
 ZERO_STAGE=${ZERO_STAGE:-2}
-OUTPUT_DIR=logs/ds_stage${ZERO_STAGE}_nl${NLAYERS}_hs${HIDDEN}_mb${MICRO_BATCH}_seq${SEQ}_gb${GLOBAL_BATCH}_pp${PP}_tp${TP}_`date +%m%d%H%M%S`
+
+DS_CONFIG=$LLM_DK_DIR/intel-extension-for-deepspeed/examples/"ds_stage${ZERO_STAGE}_mb${MICRO_BATCH}_gb${GLOBAL_BATCH}_pp${PP}_${DTYPE}.json"
+bash $LLM_DK_DIR/intel-extension-for-deepspeed/examples/generate_config.sh ${DS_CONFIG} || exit 1
+
+OUTPUT_DIR=logs/ds_stage${ZERO_STAGE}_nl${NLAYERS}_hs${HIDDEN}_mb${MICRO_BATCH}_seq${SEQ}_gb${GLOBAL_BATCH}_pp${PP}_tp${TP}_${DTYPE}_`date +%m%d%H%M%S`_${HOSTNAME}
 mkdir -p $OUTPUT_DIR
 echo "!!!Please see logs at ${OUTPUT_DIR}"
 
@@ -44,10 +47,17 @@ ds_args=" --zero-stage=$ZERO_STAGE ${ds_args}"
 custom_args=" $@"
 
 # launcher setting
-launcher=MPICH
+LAUNCHER=${LAUNCHER:-MPICH}
+if [[ $LAUNCHER == "deepspeed" ]]; then
+    launcher=""
+else
+    launcher="--force_multi --hostfile $hostfile_deepspeed --launcher=${LAUNCHER} --launcher_args='-hostfile ${hostfile_mpich}'"
+fi
+
+CCL=${CCL:-ccl}
 
 run_cmd="
-    deepspeed --force_multi --hostfile $hostfile_deepspeed --launcher=${launcher} --launcher_args='-hostfile ${hostfile_mpich}' pretrain_gpt.py \
+    deepspeed $launcher pretrain_gpt.py \
     --tensor-model-parallel-size $TP \
     --pipeline-model-parallel-size $PP \
     --num-layers $NLAYERS \
@@ -70,15 +80,17 @@ run_cmd="
     --merge-file $MERGE_FILE \
     --save-interval 500 \
     --split 100,0,0 \
-    --bf16 \
+    --$DTYPE \
     --checkpoint-activations \
     $ds_args \
     --no-masked-softmax-fusion \
     --no-bias-gelu-fusion \
-    --distributed-backend ccl \
+    --no-bias-dropout-fusion \
+    --no-gradient-accumulation-fusion \
+    --distributed-backend $CCL \
     --num-workers 0 \
     $custom_args \
-    | tee $OUTPUT_DIR/output.log
+    |& tee $OUTPUT_DIR/output.log
     "
 
 echo ${run_cmd}

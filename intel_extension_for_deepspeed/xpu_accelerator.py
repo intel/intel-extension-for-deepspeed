@@ -150,6 +150,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def is_fp16_supported(self):
         return True
 
+    def supported_dtypes(self):
+        return [torch.float, torch.half, torch.bfloat16]
+
     # Tensor operations
 
     @property
@@ -202,7 +205,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder
+        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder
         from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
         from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
 
@@ -224,6 +227,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return UtilsBuilder
         elif class_name == "InferenceBuilder":
             return InferenceBuilder
+        elif class_name == "FlashAttentionBuilder":
+            return FlashAttentionBuilder
         else:
             return None
 
