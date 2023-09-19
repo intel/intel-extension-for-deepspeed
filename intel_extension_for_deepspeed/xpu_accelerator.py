@@ -8,6 +8,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'xpu'
         self._communication_backend_name = 'ccl'
+        self.aligned_tensors = []
 
     def is_synchronized_device(self):
         return False
@@ -188,6 +189,19 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     
     def is_pinned(self, tensor):
         return tensor.is_pinned(device=self.current_device_name())  
+
+    def align_memory(self, tensor):
+        from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
+        self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
+        algined_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
+        self.aligned_tensors.append([algined_t.data_ptr(), algined_t[-1].data_ptr()])
+        return algined_t
+    
+    def is_aligned(self, tensor):
+        for begin, end in self.aligned_tensors:
+            if begin <= tensor.data_ptr() and tensor.data_ptr() <= end:
+                return True
+        return False
 
     def op_builder_dir(self):
         return "intel_extension_for_deepspeed.op_builder"
