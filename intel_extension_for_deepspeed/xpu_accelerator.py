@@ -8,8 +8,6 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'xpu'
         self._communication_backend_name = 'ccl'
-        self.zero_infinity = False
-        self.pinned_tensors = []
 
     def is_synchronized_device(self):
         return False
@@ -186,27 +184,10 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return torch.xpu.LongTensor
 
     def pin_memory(self, tensor):
-        from deepspeed.ops.op_builder import AsyncIOBuilder
-        try:
-            if self.zero_infinity:
-                pinned = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
-            else:
-                self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
-                self.zero_infinity = True
-                pinned = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
-            self.pinned_tensors.append([pinned.data_ptr(), pinned[-1].data_ptr()])
-            return pinned
-        except TypeError:
-            return tensor.pin_memory(device=self.current_device_name())
+        return tensor.pin_memory(device=self.current_device_name())
     
     def is_pinned(self, tensor):
-        if not self.zero_infinity:
-            return tensor.is_pinned(device=self.current_device_name())  
-        else:
-            for begin, end in self.pinned_tensors:
-                if begin <= tensor.data_ptr() and tensor.data_ptr() <= end:
-                    return True
-            return False
+        return tensor.is_pinned(device=self.current_device_name())  
 
     def op_builder_dir(self):
         return "intel_extension_for_deepspeed.op_builder"
