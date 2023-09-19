@@ -1,0 +1,22 @@
+name: 'Run Python Unit Tests'
+description: 'Run Python Unit Tests'
+inputs:
+  options:
+    description: 'Options for tests'
+    required: false
+    default: ""
+  python:
+    description: 'Path to python'
+    required: false
+    default: "python"
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      env:
+        OPTIONS: "${{ inputs.options }}"
+        PYTHON: "${{ inputs.python }}"
+      run: |
+        set -x
+        # shellcheck disable ...
+        $PYTHON -u -m unittest discover -v $OPTIONS
