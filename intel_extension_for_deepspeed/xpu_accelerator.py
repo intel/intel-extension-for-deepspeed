@@ -184,23 +184,24 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return torch.xpu.LongTensor
 
-    def pin_memory(self, tensor):
-        return tensor.pin_memory(device=self.current_device_name())
-    
-    def is_pinned(self, tensor):
-        return tensor.is_pinned(device=self.current_device_name())  
+    def pin_memory(self, tensor, align_bytes=1):
+        if align_bytes == 1:
+            return tensor.pin_memory(device=self.current_device_name())
+        elif align_bytes == -1:
+            from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
+            self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
+            aligned_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
+            aligned_t = aligned_t[:tensor.numel()].copy_(tensor).pin_memory(device=self.current_device_name())
+            self.aligned_tensors.append([aligned_t.data_ptr(), aligned_t[-1].data_ptr()])
+            return aligned_t
 
-    def align_memory(self, tensor):
-        from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
-        self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
-        algined_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
-        self.aligned_tensors.append([algined_t.data_ptr(), algined_t[-1].data_ptr()])
-        return algined_t
-    
-    def is_aligned(self, tensor):
-        for begin, end in self.aligned_tensors:
-            if begin <= tensor.data_ptr() and tensor.data_ptr() <= end:
-                return True
+    def is_pinned(self, tensor):
+        if tensor.is_pinned(device=self.current_device_name()):
+            return True
+        else:
+            for begin, end in self.aligned_tensors:
+                if begin <= tensor.data_ptr() and tensor.data_ptr() <= end:
+                    return True
         return False
 
     def op_builder_dir(self):
