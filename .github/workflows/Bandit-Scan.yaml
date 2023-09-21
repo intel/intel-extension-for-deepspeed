@@ -1,0 +1,41 @@
+name: Scanner-Bandit
+on:
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: 'Enter Project repo for which you want to run Bandit scan:'
+        required: true
+        type: string
+        default: 'intel-innersource/frameworks.ai.transfer-learning'
+      refs:
+        description: 'Enter Project branch, tag:'
+        required: true
+        type: string
+        default: 'develop'
+      excludes:
+        description: 'Enter target repository folders to be excluded eg. tools,xyz etc:'
+        required: false
+        type: string
+      config_file:
+        description: 'Enter target repository configuration file for Bandit scan eg. .bandit.yml:'
+        required: false
+        type: string
+        default: 'bandit.yml'
+        # runner_label:
+        #   description: 'Enter one label of the runner that will execute the workflow:'
+        #   required: true
+        #   type: string
+        #   default: "['gasp']"
+jobs:
+  scan-bandit:
+    uses: 'intel-innersource/frameworks.ai.infrastructure.code-scan-tools/.github/workflows/Scanner_Bandit.yml@one-ci-cd'
+    with:
+      repos: 'frameworks.ai.transfer-learning'  # ${{ github.event.inputs.repos }}
+      refs: ${{ github.event.inputs.refs }}
+      # config_file: ${{ github.event.inputs.config_file }}
+      runners: "['gasp']"  # ${{ github.event.inputs.runner_label }}
+    secrets:
+      token: ${{ secrets.GITHUB_TOKEN }}
