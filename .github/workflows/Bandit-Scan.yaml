@@ -9,12 +9,12 @@ on:
         description: 'Enter Project repo for which you want to run Bandit scan:'
         required: true
         type: string
-        default: 'intel-innersource/frameworks.ai.transfer-learning'
+        default: '1pikachu/intel-extension-for-deepspeed'
       refs:
         description: 'Enter Project branch, tag:'
         required: true
         type: string
-        default: 'develop'
+        default: 'main'
       excludes:
         description: 'Enter target repository folders to be excluded eg. tools,xyz etc:'
         required: false
@@ -33,7 +33,7 @@ jobs:
   scan-bandit:
     uses: 'intel-innersource/frameworks.ai.infrastructure.code-scan-tools/.github/workflows/Scanner_Bandit.yml@one-ci-cd'
     with:
-      repos: 'frameworks.ai.transfer-learning'  # ${{ github.event.inputs.repos }}
+      repos: 'intel-extension-for-deepspeed'  # ${{ github.event.inputs.repos }}
       refs: ${{ github.event.inputs.refs }}
       # config_file: ${{ github.event.inputs.config_file }}
       runners: "['gasp']"  # ${{ github.event.inputs.runner_label }}
