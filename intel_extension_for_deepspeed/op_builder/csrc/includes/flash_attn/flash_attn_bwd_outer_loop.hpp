@@ -40,7 +40,6 @@ struct flash_attention_bwd {
         input_T* ptr_q,
         input_T* ptr_k,
         input_T* ptr_v,
-        // acc_T* ptr_dp, // for debug
         out_T* ptr_o,
         acc_T* ptr_L,
         input_T* ptr_dq,
@@ -59,7 +58,6 @@ struct flash_attention_bwd {
             ptr_q,
             ptr_k,
             ptr_v,
-            // ptr_dp, // for debug
             ptr_o,
             ptr_L,
             ptr_dq,

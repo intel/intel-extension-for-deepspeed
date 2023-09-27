@@ -199,10 +199,8 @@ struct fmha_bwd_block_t {
     input_T* ptr_q;
     input_T* ptr_k;
     input_T* ptr_v;
-    // acc_T* ptr_dp; //for debug
     out_T* ptr_o;
     acc_T* ptr_L;
-    // acc_T* ptr_m;
     input_T* ptr_dQ;
     input_T* ptr_dK;
     input_T* ptr_dV;
@@ -230,10 +228,8 @@ struct fmha_bwd_block_t {
         input_T* ptr_q_,
         input_T* ptr_k_,
         input_T* ptr_v_,
-        // acc_T* ptr_dp_, // for debug
         out_T* ptr_o_,
         acc_T* ptr_L_,
-        // acc_T* ptr_m_,
         input_T* ptr_dQ_,
         input_T* ptr_dK_,
         input_T* ptr_dV_,
@@ -242,7 +238,6 @@ struct fmha_bwd_block_t {
         const uint32_t seq_q_,
         const uint32_t seq_k_,
         const float scale_,
-        // const bool apply_dropout_ = false,
         const float dropout_prob_ = 0,
         const float dropout_scale_ = 0,
         const uint64_t rand_seed_ = 67280421310721,
@@ -251,10 +246,8 @@ struct fmha_bwd_block_t {
         : ptr_q(ptr_q_),
           ptr_k(ptr_k_),
           ptr_v(ptr_v_),
-          // ptr_dp(ptr_dp_), // for debug
           ptr_o(ptr_o_),
           ptr_L(ptr_L_),
-          // ptr_m(ptr_m_),
           ptr_dQ(ptr_dQ_),
           ptr_dK(ptr_dK_),
           ptr_dV(ptr_dV_),
@@ -618,51 +611,6 @@ struct fmha_bwd_block_t {
         }
         /**************Dropout bwd elemwise multiply*****************/
         { // D_i= rowsum(dO_i * O_i)
-          // mem_desc_o.init(
-          //     args.ptr_o,
-          //     {boundary_n_Tr, boundary_m_Tr, args.head_size},
-          //     {start_n_Tr + brgemm_brxd_t::get_matC_offset_x(g_brxd),
-          //     start_m_Tr + brgemm_brxd_t::get_matC_offset_y(g_brxd)});
-          // mem_desc_dO.init(
-          //     args.ptr_dO,
-          //     {boundary_n_Tr, boundary_m_Tr, args.head_size},
-          //     {start_n_Tr + brgemm_brxd_t::get_matC_offset_x(g_brxd),
-          //     start_m_Tr + brgemm_brxd_t::get_matC_offset_y(g_brxd)});
-
-          // tile_payload_Tr_1.init(mem_desc_dO);
-          // tile_load(mat_dO, tile_payload_Tr_1);
-
-          // tile_payload_Tr_2.init(mem_desc_o);
-          // tile_load(mat_O, tile_payload_Tr_2);
-
-          // elemwise_cvt<matAcc_brxd_t, tile_Tr_t>(matAcc_O, mat_O);
-          // elemwise_cvt<matAcc_brxd_t, tile_Tr_t>(matAcc_dO, mat_dO);
-          // matAcc_D.reg = matAcc_O.reg * matAcc_dO.reg;
-          // int32_t sg_idx = g_brxd.get_id() % tile_shape_brxd::wg_size_x;
-          // int32_t sg_idy = g_brxd.get_id() / tile_shape_brxd::wg_size_x;
-
-          // uint32_t nbarrier_id = /*nbarrier_base*/ tile_shape_brxd::wg_size_x +
-          //     tile_shape_brxd::wg_size_y + sg_idy;
-          // uint32_t slm_base_addr = /*slm_base*/ 0 +
-          //     sg_idy * tile_shape_brxd::wg_size_x *
-          //         tile_shape_brxd::sg_tile_size_y * sizeof(acc_T);
-
-          // xetla_vector<acc_T, tile_shape_brxd::sg_tile_size_y> local_sum =
-          //     tile_reduce<reduce_op::sum, matAcc_brxd_t, acc_T, 1>(matAcc_D);
-          // wg_reduce_sum_t wg_reduce_sum(sg_idx, nbarrier_id, slm_base_addr);
-          // xetla_vector<acc_T, tile_shape_brxd::sg_tile_size_y> group_sum =
-          //   wg_reduce_sum(local_sum);
-          
-          // dS_ij = P_ij*(dP_ij-D_ij)
-          // matAcc_dP.init(0);
-
-          // for debug
-          // mem_desc_debug.init(
-          //     {args.ptr_dp},
-          //     {boundary_n_rc, boundary_m_rc, args.seq_k},
-          //     {start_n_rc, start_m_rc}
-          // );
-          // epilogue_brxbc(g_brxbc, matAcc_dP, mem_desc_debug);
           
           mem_desc_D.init(
               args.ptr_D,
@@ -672,27 +620,11 @@ struct fmha_bwd_block_t {
           tile_load(tile_D, tile_payload_D);
           
           tile_broadcast_op<tile_minus, matAcc_brxbc_t>(matAcc_dP, tile_D.reg);
-
-          // for debug
-          // mem_desc_debug.init(
-          //     {args.ptr_dp},
-          //     {boundary_n_rc, boundary_m_rc, args.seq_k},
-          //     {start_n_rc, start_m_rc}
-          // );
-          // epilogue_brxbc(g_brxbc, matAcc_dP, mem_desc_debug);
           
           matAcc_dP.reg = matAcc_dP.reg * matAcc_p.reg;
           // __esimd_barrier();
           nbarrier_x.arrive_wait();
           nbarrier_y.arrive_wait();
-
-          // for debug
-          // mem_desc_debug.init(
-          //     {args.ptr_dp},
-          //     {boundary_n_rc, boundary_m_rc, args.seq_k},
-          //     {start_n_rc, start_m_rc}
-          // );
-          // epilogue_brxbc(g_brxbc, matAcc_dP, mem_desc_debug);
         }
 
         { // store dP to local

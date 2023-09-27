@@ -102,13 +102,7 @@ bool flash_attn_fwd(
             fmha_fwd(ei, args);
           });
     });
-    // DPCPP_Q_SUBMIT(queue, cgf);
-    auto gpu_event = queue.submit(cgf);
-    gpu_event.wait();
-    auto e_start =
-          gpu_event.template get_profiling_info<sycl::info::event_profiling::command_start>();
-    auto e_end = gpu_event.template get_profiling_info<sycl::info::event_profiling::command_end>();
-    std::cout << "fwd time: " << (e_end - e_start) / 1000.0 / 1000.0 << std::endl;
+    DPCPP_Q_SUBMIT(queue, cgf);
   } catch (cl::sycl::exception const& e) {
     std::cout << "SYCL exception caught: " << e.what() << '\n';
     return false;

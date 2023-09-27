@@ -19,7 +19,6 @@ bool flash_attn_bwd(
     const void* q_ptr,
     const void* k_ptr,
     const void* v_ptr,
-    // const void* dp_ptr, // for debug
     const void* dropout_mask_ptr,
     const float dropout_prob,
     const float dropout_scale,
@@ -87,7 +86,6 @@ bool flash_attn_bwd(
                 (input_T*)q_ptr + batch_id * qkv_batch_offset,
                 (input_T*)k_ptr + batch_id * qkv_batch_offset,
                 (input_T*)v_ptr + batch_id * qkv_batch_offset,
-                // (acc_T*)dp_ptr + batch_id * Sl * Sl, // for debug
                 (out_T*)out + batch_id * qkv_batch_offset,
                 (acc_T*)softmax_workspace +
                     (batch_id) * softmax_batch_offset, // softmax_l/L
@@ -109,13 +107,7 @@ bool flash_attn_bwd(
             fmha_bwd(ei, args);
           });
     });
-    // DPCPP_Q_SUBMIT(queue, cgf);
-    auto gpu_event = queue.submit(cgf);
-    gpu_event.wait();
-    auto e_start =
-          gpu_event.template get_profiling_info<sycl::info::event_profiling::command_start>();
-    auto e_end = gpu_event.template get_profiling_info<sycl::info::event_profiling::command_end>();
-    std::cout << "bwd time: " << (e_end - e_start) / 1000.0 / 1000.0 << std::endl;
+    DPCPP_Q_SUBMIT(queue, cgf);
   } catch (cl::sycl::exception const& e) {
     std::cout << "SYCL exception caught: " << e.what() << '\n';
     return false;
