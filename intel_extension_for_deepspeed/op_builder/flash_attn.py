@@ -27,29 +27,29 @@ class FlashAttnFunc(Function):
         dropout_scale = 1.0 / (1.0 - dropout_p)
         dropout_seed = torch.seed()
 
-        out, softmax_res = flash_attn_module.flash_attn_fwd(
+        out, softmax_L, softmax_m = flash_attn_module.flash_attn_fwd(
             q, k, v, bs, hn, sl, hs, softmax_scale,
             dropout_p, dropout_scale, dropout_seed, causal, return_softmax, return_mask
         )
 
-        ctx.save_for_backward(q, k, v, out, softmax_res)
+        ctx.save_for_backward(q, k, v, out, softmax_L, softmax_m)
         ctx.dropout_p = dropout_p
         ctx.dropout_scale = dropout_scale
         ctx.dropout_seed = dropout_seed
         ctx.softmax_scale = softmax_scale
         ctx.causal = causal
         ctx.return_softmax = return_softmax
-        return out if not return_softmax else (out, softmax_res)
+        return out if not return_softmax else (out, softmax_L)
 
     @staticmethod
     def backward(ctx, dout, *args):
-        q, k, v, out, softmax_res = ctx.saved_tensors
+        q, k, v, out, softmax_L, softmax_m = ctx.saved_tensors
         bs, hn, sl, hs = q.shape
 
         dq, dk, dv = flash_attn_module.flash_attn_bwd(
             dout, q, k, v, out, bs, hn, sl, hs, ctx.softmax_scale,
             ctx.dropout_p, ctx.dropout_scale, ctx.dropout_seed, ctx.causal,
-            ctx.return_softmax, softmax_res
+            ctx.return_softmax, softmax_L, softmax_m
         )
         return dq, dk, dv, None, None, None, None, None
 
@@ -120,6 +120,7 @@ class FlashAttentionBuilder(SYCLOpBuilder):
     def cxx_args(self):
         args = ['-fsycl', '-O3', '-g', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64']
         args += ['-fsycl-targets=spir64_gen']
+        args += ["-Xs \"-device pvc -options '-vc-disable-indvars-opt -vc-codegen -doubleGRF -Xfinalizer -printregusage -Xfinalizer -enableBCR -DPASTokenReduction '\" "]
         return args
 
     def load(self):
