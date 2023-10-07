@@ -187,11 +187,11 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def pin_memory(self, tensor, align_bytes=1):
         if align_bytes == 1:
             return tensor.pin_memory(device=self.current_device_name())
-        elif align_bytes == -1:
+        elif align_bytes == 0:
             from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
             self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
             aligned_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
-            aligned_t = aligned_t[:tensor.numel()].copy_(tensor).pin_memory(device=self.current_device_name())
+            aligned_t = aligned_t[:tensor.numel()].copy_(tensor)
             self.aligned_tensors.append([aligned_t.data_ptr(), aligned_t[-1].data_ptr()])
             return aligned_t
 
