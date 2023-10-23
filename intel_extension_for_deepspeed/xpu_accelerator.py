@@ -147,6 +147,9 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def is_triton_supported(self):
         return False
 
+    def available_memory(self, device_index=None):
+        return
+
     # Data types
     def is_bf16_supported(self):
         return True
