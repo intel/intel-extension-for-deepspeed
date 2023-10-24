@@ -18,6 +18,81 @@
 #include <cmath>
 #include "xetla.hpp"
 
+template <
+    typename input_T_, // input type
+    typename out_T_, // output type
+    typename acc_T_, // acc type
+    uint32_t head_size_, // currently [96, 128]
+    uint32_t blocksize_r_, // default 128
+    uint32_t blocksize_c_> // default 128
+struct fwd_kernel_traits {
+  using input_T = input_T_;
+  using out_T = out_T_;
+  using acc_T = acc_T_;
+  static constexpr uint32_t head_size = head_size_;
+   static constexpr uint32_t blocksize_r = blocksize_r_;
+  static constexpr uint32_t blocksize_c = blocksize_c_;
+};
+
+template <
+    typename input_T_, // input type
+    typename out_T_, // output type
+    typename acc_T_, // acc type
+    uint32_t head_size_, // currently [96, 128]
+    uint32_t blocksize_r_, // default 128
+    uint32_t blocksize_c_> // default 128
+struct bwd_kernel_traits {
+  using input_T = input_T_;
+  using out_T = out_T_;
+  using acc_T = acc_T_;
+  static constexpr uint32_t head_size = head_size_;
+   static constexpr uint32_t blocksize_r = blocksize_r_;
+  static constexpr uint32_t blocksize_c = blocksize_c_;
+};
+
+static constexpr float Inf = INFINITY;
+static constexpr float negative_Inf = Inf * -1;
+
+namespace gpu::xetla::subgroup {
+
+struct tile_mul {
+  template <typename dtype, int vec_len>
+  static xetla_vector<dtype, vec_len> inline func(
+          xetla_vector<dtype, vec_len> vec_data, dtype data) {
+      return vec_data * data;
+  }
+};
+
+struct tile_add {
+  template <typename dtype, int vec_len>
+  static xetla_vector<dtype, vec_len> inline func(
+          xetla_vector<dtype, vec_len> vec_data, dtype data) {
+      return vec_data + data;
+  }
+};
+
+}
+
+namespace gpu::xetla {
+
+/// @brief Calculate log value for each element of the input vector, the base is e.
+/// @tparam T element type of the input and return vectors.
+/// @tparam SZ size of the input and returned vectors.
+/// @param src the input vector.
+/// @param sat enables/disables the saturation (off by default). Possible
+/// values: saturation_on/saturation_off.
+/// @return vector of component-wise log elements.
+template <class T, int SZ, typename Sat = xettp_saturation_off_tag>
+__XETLA_API xetla_vector<T, SZ> xetla_log(
+        xetla_vector<T, SZ> src, Sat sat = {}) {
+    static_assert((std::is_same<remove_const_t<T>, float>::value)
+                    || (std::is_same<remove_const_t<T>, fp16>::value),
+            "Only support fp32 and fp16");
+    return __ESIMD_NS::log<T, SZ>(src, Sat::value);
+}
+
+}
+
 namespace gpu::xetla::group {
 
 template <
@@ -27,15 +102,13 @@ template <
 class epilogue_transp_t {};
 template <
     typename tile_op_t_,
-    typename update_method_,
     typename tile_shape_,
     typename mem_desc_c_t_>
 class epilogue_transp_t<
-    epilogue_policy_tile_op<tile_op_t_, update_method_, gpu_arch::Xe>,
+    epilogue_policy_tile_op<tile_op_t_, gpu_arch::Xe>,
     tile_shape_,
     mem_desc_c_t_> {
  public:
-  using update_method = result_overwrite;
   using tile_shape = tile_shape_;
   using mem_desc_c_t = mem_desc_c_t_;
   static constexpr gpu_arch arch_tag = gpu_arch::Xe;
@@ -152,8 +225,6 @@ template <
     bool is_causal = true>
 struct casual_mask {
   using tile_shape_t = tile_shape_t_;
-  static constexpr float Inf = INFINITY;
-  static constexpr float negative_Inf = Inf * -1;
   static constexpr uint32_t tg_size_x = tile_shape_t::wg_size_x;
   static constexpr uint32_t sg_tile_m = tile_shape_t::sg_tile_size_y;
   static constexpr uint32_t sg_tile_n = tile_shape_t::sg_tile_size_x;
@@ -197,5 +268,80 @@ struct casual_mask {
     }
   }
 };
+
+// template <uint32_t SZ,
+// typename tile_shape_t_, int br, int bc, typename matAcc_t, typename worker_scope_t,
+// typename dtype_mask = uint8_t, uint32_t random_simd = 16>
+// struct dropout_casual_t {
+//     using tile_shape_t = tile_shape_t_;
+//     static constexpr uint32_t tg_size_x = tile_shape_t::wg_size_x;
+//     static constexpr uint32_t sg_tile_m = tile_shape_t::sg_tile_size_y;
+//     static constexpr uint32_t sg_tile_n = tile_shape_t::sg_tile_size_x;
+//     static constexpr uint32_t block_size_x = matAcc_t::tile_desc_t::block_size_x;
+//     static constexpr uint32_t block_size_y = matAcc_t::tile_desc_t::block_size_y;
+//     // static constexpr uint32_t num_block_x = matAcc_t::tile_desc_t::num_block_x;
+//     // static constexpr uint32_t num_block_y =
+//     //     matAcc_t::tile_desc_t::num_block / num_block_x;
+//     // static constexpr uint32_t block_elems = matAcc_t::tile_desc_t::block_elems;
+
+//     static constexpr uint32_t random_len = 4 * random_simd;
+//     xetla_rand_t<random_simd> rand_gen;
+//     xetla_vector<dtype_mask, SZ> mask;
+//     uint32_t threshold;
+//     float scale;
+
+//     __XETLA_API void init(uint64_t seed, uint64_t subseq, uint64_t offset,
+//             uint32_t threshold_, float scale_) {
+//         rand_gen.init(seed, subseq, offset);
+//         this->threshold = threshold_;
+//         this->scale = scale_;
+//     }
+
+//     template <typename dtype>
+//     __XETLA_API xetla_vector<dtype, SZ> process(
+//         xetla_vector<dtype, SZ> input,
+//         worker_scope_t& g,
+//         const int m_idx,
+//         const int n_idx) {
+//         int32_t sg_idx = g.get_id() % tg_size_x;
+//         int32_t sg_idy = g.get_id() / tg_size_x;
+//         const int start_col = n_idx * bc + sg_idx * sg_tile_n;
+//         const int start_row = m_idx * br + sg_idy * sg_tile_m;
+
+//         xetla_vector<dtype, SZ> output = input;
+// #pragma unroll
+//         for (int i = 0; i < SZ / random_len; i++) {
+//             int cur_col = start_col + (i * random_len) / sg_tile_n;
+//             int cur_row = start_row + (i * random_len) % sg_tile_n;
+//             if (cur_row >= cur_col) {
+//                 auto out_sub = output.xetla_select<random_len, 1>(i * random_len);
+//                 auto mask_sub = mask.xetla_select<random_len, 1>(i * random_len);
+//                 xetla_vector<uint32_t, random_len> rand_val = rand_gen.rand();
+//                 xetla_mask<random_len> mask_flag = rand_val < threshold;
+//                 out_sub.xetla_merge(0, mask_flag);
+//                 mask_sub.xetla_merge(1, 0, mask_flag);
+//                 out_sub = out_sub * scale;
+//             }
+//         }
+//         if constexpr (SZ % random_len != 0) {
+//             constexpr uint32_t remain_len = SZ % random_len;
+//             constexpr uint32_t remain_start = SZ / random_len * random_len;
+//             auto out_sub = output.xetla_select<remain_len, 1>(remain_start);
+//             auto mask_sub = mask.xetla_select<remain_len, 1>(remain_start);
+//             // dropout, still generate random_len
+//             xetla_vector<uint32_t, random_len> rand_val = rand_gen.rand();
+//             xetla_mask<random_len> mask_flag = rand_val < threshold;
+//             out_sub.xetla_merge(0, mask_flag.xetla_select<remain_len, 1>(0));
+//             mask_sub.xetla_merge(
+//                     1, 0, mask_flag.xetla_select<remain_len, 1>(0));
+//             out_sub = out_sub * scale;
+//         }
+//         return output;
+//     }
+
+//     __XETLA_API xetla_vector<dtype_mask, SZ> get_mask() {
+//         return mask;
+//     }
+// };
 
 }; // namespace gpu::xetla::group
