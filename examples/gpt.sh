@@ -82,6 +82,7 @@ run_cmd="
     --split 100,0,0 \
     --$DTYPE \
     --checkpoint-activations \
+    --deepspeed-activation-checkpointing
     $ds_args \
     --no-masked-softmax-fusion \
     --no-bias-gelu-fusion \
