@@ -60,12 +60,12 @@ bool flash_attn_fwd(
   int qkv_batch_offset = Sl * block_d;
   int softmax_batch_offset = Sl;
 
-  constexpr size_t wg_range_m = block_br / wg_tile_m;
-  constexpr size_t wg_range_n = block_bc / wg_tile_n;
+  constexpr size_t wg_range_m = 1;
+  constexpr size_t wg_range_n = 1;
   constexpr size_t sg_range_m = wg_tile_m / sg_tile_m;
   constexpr size_t sg_range_n = wg_tile_n / sg_tile_n;
 
-  cl::sycl::range<3> group_range{Bs * Hn, wg_range_m, wg_range_n};
+  cl::sycl::range<3> group_range{Bs * Hn, 1, 1};
   cl::sycl::range<3> local_range{1, sg_range_m, sg_range_n};
   cl::sycl::nd_range<3> nd_range(group_range * local_range, local_range);
 

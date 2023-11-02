@@ -30,7 +30,7 @@ struct fwd_kernel_traits {
   using out_T = out_T_;
   using acc_T = acc_T_;
   static constexpr uint32_t head_size = head_size_;
-   static constexpr uint32_t blocksize_r = blocksize_r_;
+  static constexpr uint32_t blocksize_r = blocksize_r_;
   static constexpr uint32_t blocksize_c = blocksize_c_;
 };
 
@@ -46,7 +46,7 @@ struct bwd_kernel_traits {
   using out_T = out_T_;
   using acc_T = acc_T_;
   static constexpr uint32_t head_size = head_size_;
-   static constexpr uint32_t blocksize_r = blocksize_r_;
+  static constexpr uint32_t blocksize_r = blocksize_r_;
   static constexpr uint32_t blocksize_c = blocksize_c_;
 };
 
