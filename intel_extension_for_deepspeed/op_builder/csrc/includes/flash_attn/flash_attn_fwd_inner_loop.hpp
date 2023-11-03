@@ -433,7 +433,7 @@ struct fmha_fwd_block_t {
         );
         mem_desc_trans_k.init(
           {args.ptr_k},
-          {end_n_rc, end_k_rc, gemm_brxbc_block_tile_t::blocked_N},
+          {end_n_rc, end_k_rc, gemm_brxbc_block_tile_t::blocked_K},
           {start_n_rc, start_k_rc}
         );
         matAcc_p.init(0);

@@ -437,6 +437,8 @@ struct fmha_bwd_block_t {
       
       tile_payload_D.init(mem_desc_D);
       tile_store(tile_D, tile_payload_D);
+      nbarrier_x.arrive_wait();
+      nbarrier_y.arrive_wait();
     }
 
     for (int outer_loop_idx = 0; outer_loop_idx < max_outer_loop_steps; outer_loop_idx++) {
