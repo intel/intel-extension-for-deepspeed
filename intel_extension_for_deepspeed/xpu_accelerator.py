@@ -1,7 +1,7 @@
 import torch
 from deepspeed.accelerator.abstract_accelerator import DeepSpeedAccelerator
 import intel_extension_for_pytorch as ipex  # noqa: F401
-import oneccl_bindings_for_pytorch  #noqa: F401
+#import oneccl_bindings_for_pytorch  #noqa: F401
 
 
 class XPU_Accelerator(DeepSpeedAccelerator):
@@ -148,7 +148,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return False
 
     def available_memory(self, device_index=None):
-        return
+        return self.total_memory(device_index) - self.memory_allocated(device_index)
 
     # Data types
     def is_bf16_supported(self):
