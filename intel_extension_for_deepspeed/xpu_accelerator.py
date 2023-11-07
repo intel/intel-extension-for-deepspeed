@@ -148,7 +148,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return False
 
     def available_memory(self, device_index=None):
-        return
+        return self.total_memory(device_index) - self.memory_allocated(device_index)
 
     # Data types
     def is_bf16_supported(self):
