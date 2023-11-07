@@ -9,3 +9,13 @@ pydantic
 pynvml
 torch
 tqdm
+expecttest
+hypothesis
+numpy
+psutil
+pytest
+pyyaml
+scipy>=1.8.0
+setuptools
+types-dataclasses
+typing_extensions
