@@ -15,15 +15,23 @@ class InferenceBuilder(SYCLOpBuilder):
     def is_compatible(self, verbose=True):
         return super().is_compatible(verbose)
 
+    def cxx_args(self):
+        args = super().cxx_args()
+        args.append('-DBF16_AVAILABLE')
+        return args
+
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/inference/csrc/softmax.cpp'),
             sycl_kernel_path('csrc/transformer/inference/csrc/pt_binding.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/gelu.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onemkl_wrappers.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/pointwise_ops.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/gelu.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/relu.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/rms_norm.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/softmax.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/dequantize.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/apply_rotary_pos_emb.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/transform.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/pointwise_ops.dp.cpp'),
         ]
 
     def include_paths(self):

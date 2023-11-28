@@ -4,9 +4,10 @@
 // DeepSpeed Team
 
 #include <sycl/sycl.hpp>
-#include "conversion_utils.hpp"
-#include "compatible.hpp"
-#include "memory_access_utils.hpp"
+#include "device.hpp"
+#include "conversion_utils.h"
+#include "ds_kernel_utils.h"
+#include "memory_access_utils.h"
 
 namespace pwise {
 constexpr int granularity = 16;
@@ -15,9 +16,9 @@ constexpr int threads = 256;
 }  // namespace pwise
 
 template <typename T>
-void vector_add_kernel(T* out, const T* a, const T* b, float gamma, int num_elems,
-                       const sycl::nd_item<3> &item_ct1)
+void vector_add_kernel(T* out, const T* a, const T* b, float gamma, int num_elems)
 {
+    auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     constexpr int T_per_access = pwise::granularity / sizeof(T);
 
     const int block_offset = item_ct1.get_group(2) * pwise::threads * pwise::unroll * T_per_access;
@@ -53,7 +54,7 @@ void launch_vector_add(T* out,
                        const T* b,
                        float gamma,
                        int num_elems,
-                       sycl::queue stream)
+                       sycl::queue * stream)
 {
     constexpr int T_per_access = pwise::granularity / sizeof(T);
     constexpr int T_per_block = pwise::threads * T_per_access * pwise::unroll;
@@ -62,19 +63,21 @@ void launch_vector_add(T* out,
     sycl::range<3> grid(1, 1, (num_elems + T_per_block - 1) / T_per_block);
 
     {
-        stream.parallel_for(sycl::nd_range<3>(grid * block, block),
+        dpct::has_capability_or_fail(stream->get_device(),
+                                     {sycl::aspect::fp64, sycl::aspect::fp16});
+        stream->parallel_for(sycl::nd_range<3>(grid * block, block),
                              [=](sycl::nd_item<3> item_ct1) {
-                                 vector_add_kernel(out, a, b, gamma, num_elems, item_ct1);
+                                 vector_add_kernel(out, a, b, gamma, num_elems);
                              });
     }
 }
 
 #define INSTANTIATE_VECTOR_ADD(T)       \
     template void launch_vector_add<T>( \
-        T * out, const T* a, const T* b, float gamma, int num_elems, sycl::queue stream);
+        T * out, const T* a, const T* b, float gamma, int num_elems, sycl::queue * stream);
 
 INSTANTIATE_VECTOR_ADD(float)
 INSTANTIATE_VECTOR_ADD(sycl::half)
 #ifdef BF16_AVAILABLE
-INSTANTIATE_VECTOR_ADD(bf16)
+INSTANTIATE_VECTOR_ADD(sycl::ext::oneapi::bfloat16)
 #endif
