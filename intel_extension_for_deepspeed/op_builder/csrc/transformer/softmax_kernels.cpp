@@ -444,7 +444,7 @@ void launch_attn_softmax(T* vals,
                          int batch_size,
                          int heads,
                          int sequence_length,
-                         queue* stream)
+                         queue stream)
 {
     const int threads = 128;
     int seq_length4 = sequence_length / 4;
@@ -465,7 +465,7 @@ void launch_attn_softmax(T* vals,
                                                  : MAX_THREAD_ITERATIONS);
 
     if (sequence_length <= 8)
-        stream->submit([&](handler& cgh) {
+        stream.submit([&](handler& cgh) {
             accessor<float, 1, access::mode::read_write, access::target::local> data_block_acc_ct1(
                 range<1>(MAX_SG_NUM), cgh);
             cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -481,7 +481,7 @@ void launch_attn_softmax(T* vals,
                              });
         });
     else if (sequence_length <= 16)
-        stream->submit([&](handler& cgh) {
+        stream.submit([&](handler& cgh) {
             accessor<float, 1, access::mode::read_write, access::target::local> data_block_acc_ct1(
                 range<1>(MAX_SG_NUM), cgh);
             cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -497,7 +497,7 @@ void launch_attn_softmax(T* vals,
                              });
         });
     else if (sequence_length <= 32)
-        stream->submit([&](handler& cgh) {
+        stream.submit([&](handler& cgh) {
             accessor<float, 1, access::mode::read_write, access::target::local> data_block_acc_ct1(
                 range<1>(MAX_SG_NUM), cgh);
             cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -513,7 +513,7 @@ void launch_attn_softmax(T* vals,
                              });
         });
     else if (sequence_length <= 64)
-        stream->submit([&](handler& cgh) {
+        stream.submit([&](handler& cgh) {
             accessor<float, 1, access::mode::read_write, access::target::local> data_block_acc_ct1(
                 range<1>(MAX_SG_NUM), cgh);
             cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -529,7 +529,7 @@ void launch_attn_softmax(T* vals,
                              });
         });
     else if (sequence_length <= 128)
-        stream->submit([&](handler& cgh) {
+        stream.submit([&](handler& cgh) {
             accessor<float, 1, access::mode::read_write, access::target::local> data_block_acc_ct1(
                 range<1>(MAX_SG_NUM), cgh);
             cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -545,7 +545,7 @@ void launch_attn_softmax(T* vals,
                              });
         });
     else if (sequence_length <= 256)
-        stream->submit([&](handler& cgh) {
+        stream.submit([&](handler& cgh) {
             accessor<float, 1, access::mode::read_write, access::target::local> data_block_acc_ct1(
                 range<1>(MAX_SG_NUM), cgh);
             cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -578,7 +578,7 @@ void launch_attn_softmax(T* vals,
             (sequence_length < subblock_max_workload ? (seq_length4 + threads - 1) / threads
                                                      : MAX_THREAD_ITERATIONS);
         if (sequence_length <= 512) {
-            stream->submit([&](handler& cgh) {
+            stream.submit([&](handler& cgh) {
                 accessor<float, 1, access::mode::read_write, access::target::local>
                     data_block_acc_ct1(range<1>(MAX_SG_NUM), cgh);
                 cgh.parallel_for(
@@ -594,7 +594,7 @@ void launch_attn_softmax(T* vals,
                     });
             });
         } else if (sequence_length < (MAX_THREADS * MAX_THREAD_ITERATIONS * 4))
-            stream->submit([&](handler& cgh) {
+            stream.submit([&](handler& cgh) {
                 accessor<float, 1, access::mode::read_write, access::target::local>
                     data_block_acc_ct1(range<1>(MAX_SG_NUM), cgh);
                 cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
@@ -621,21 +621,21 @@ template void launch_attn_softmax<float>(float* vals,
                                          int batch_size,
                                          int heads,
                                          int sequence_length,
-                                         queue* stream);
+                                         queue stream);
 
 template void launch_attn_softmax<bf16>(bf16* vals,
                                         const bf16* attn_mask,
                                         int batch_size,
                                         int heads,
                                         int sequence_length,
-                                        queue* stream);
+                                        queue stream);
 
 template void launch_attn_softmax<half>(half* vals,
                                         const half* attn_mask,
                                         int batch_size,
                                         int heads,
                                         int sequence_length,
-                                        queue* stream);
+                                        queue stream);
 
 template <typename T, int tbSize, int blockStride>
 void softmax_backward_kernel(T* out_grad,
@@ -775,62 +775,62 @@ void launch_attn_softmax_backward_v2(T* out_grad,
                                      int batch_size,
                                      int heads,
                                      int seq_length,
-                                     queue* stream)
+                                     queue stream)
 {
     const int sgs_per_block = 4;
     range<3> grid_dim(1, 1, batch_size * heads * seq_length / sgs_per_block);
     range<3> block_dim(1, sgs_per_block, MAX_SG_NUM);
 
     if (seq_length <= 32)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 1>(
                                      out_grad, soft_inp, seq_length, item_ct1);
                              });
     else if (seq_length <= 64)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 2>(
                                      out_grad, soft_inp, seq_length, item_ct1);
                              });
     else if (seq_length <= 128)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 4>(
                                      out_grad, soft_inp, seq_length, item_ct1);
                              });
     else if (seq_length <= 256)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 8>(
                                      out_grad, soft_inp, seq_length, item_ct1);
                              });
     else if (seq_length <= 384)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 12>(
                                      out_grad, soft_inp, seq_length, item_ct1);
                              });
     else if (seq_length <= 512)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 16>(
                                      out_grad, soft_inp, seq_length, item_ct1);
                              });
     else if (seq_length <= 768)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 24>(
                                      out_grad, soft_inp, seq_length, item_ct1);
                              });
     else if (seq_length <= 1024)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 32>(
                                      out_grad, soft_inp, seq_length, item_ct1);
                              });
     else if (seq_length <= 2048)
-        stream->parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
+        stream.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim),
                              [=](nd_item<3> item_ct1) [[intel::reqd_sub_group_size(MAX_SG_NUM)]] {
                                  softmax_backward_kernel_v2<T, 64>(
                                      out_grad, soft_inp, seq_length, item_ct1);
@@ -846,16 +846,16 @@ template void launch_attn_softmax_backward_v2<float>(float* out_grad,
                                                      int batch_size,
                                                      int heads,
                                                      int seq_length,
-                                                     queue* stream);
+                                                     queue stream);
 template void launch_attn_softmax_backward_v2<bf16>(bf16* out_grad,
                                                     const bf16* soft_inp,
                                                     int batch_size,
                                                     int heads,
                                                     int seq_length,
-                                                    queue* stream);
+                                                    queue stream);
 template void launch_attn_softmax_backward_v2<half>(half* out_grad,
                                                     const half* soft_inp,
                                                     int batch_size,
                                                     int heads,
                                                     int seq_length,
-                                                    queue* stream);
+                                                    queue stream);

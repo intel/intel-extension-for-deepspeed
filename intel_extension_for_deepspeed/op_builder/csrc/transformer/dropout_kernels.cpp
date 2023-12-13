@@ -373,7 +373,7 @@ void launch_dropout(T* out,
                     int total_count,
                     int dim,
                     float ratio,
-                    queue* stream,
+                    queue stream,
                     bool bwd)
 {
     /*
@@ -391,14 +391,14 @@ void launch_dropout(T* out,
     uint64_t inc = total_count / grid_dim[2] / block_dim[2];
     std::pair<uint64_t, uint64_t> seed = SyclContext::Instance().IncrementOffset(inc);
     if (bwd)
-        stream->submit([&](handler& cgh) {
+        stream.submit([&](handler& cgh) {
             cgh.parallel_for(
                 nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
                     dropout_kernel_bwd(total_count, ratio, vals, out, mask, seed, item_ct1);
                 });
         });
     else
-        stream->submit([&](handler& cgh) {
+        stream.submit([&](handler& cgh) {
             cgh.parallel_for(
                 nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
                     dropout_kernel(total_count, ratio, out, vals, mask, seed, item_ct1);
@@ -412,7 +412,7 @@ template void launch_dropout(float* out,
                              int total_count,
                              int dim,
                              float ratio,
-                             queue* stream,
+                             queue stream,
                              bool);
 template void launch_dropout(bf16* out,
                              const bf16* vals,
@@ -420,7 +420,7 @@ template void launch_dropout(bf16* out,
                              int total_count,
                              int dim,
                              float ratio,
-                             queue* stream,
+                             queue stream,
                              bool);
 template void launch_dropout(half* out,
                              const half* vals,
@@ -428,7 +428,7 @@ template void launch_dropout(half* out,
                              int total_count,
                              int dim,
                              float ratio,
-                             queue* stream,
+                             queue stream,
                              bool);
 
 void dropout_grad_kernel(const int N,
@@ -516,7 +516,7 @@ void dropout_grad_kernel(const int N,
 }
 
 template <typename T>
-void launch_dropout_grad(T* vals, uint8_t* mask, int total_count, float ratio, queue* stream)
+void launch_dropout_grad(T* vals, uint8_t* mask, int total_count, float ratio, queue stream)
 {
     /*
      * Dropout.Backward0
@@ -526,7 +526,7 @@ void launch_dropout_grad(T* vals, uint8_t* mask, int total_count, float ratio, q
     const float scale = 1. / (1. - ratio);
     range<3> grid_dim = range<3>(1, 1, DS_GET_BLOCKS(total_count / unroll_factor));
     range<3> block_dim = range<3>(1, 1, DS_CUDA_NUM_THREADS);
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             dropout_grad_kernel(total_count, scale, vals, mask, item_ct1);
         });
@@ -537,17 +537,17 @@ template void launch_dropout_grad(float* vals,
                                   uint8_t* mask,
                                   int total_count,
                                   float ratio,
-                                  queue* stream);
+                                  queue stream);
 template void launch_dropout_grad(bf16* vals,
                                   uint8_t* mask,
                                   int total_count,
                                   float ratio,
-                                  queue* stream);
+                                  queue stream);
 template void launch_dropout_grad(half* vals,
                                   uint8_t* mask,
                                   int total_count,
                                   float ratio,
-                                  queue* stream);
+                                  queue stream);
 
 void dropout_grad_kernel(const int N,
                          const float scale,
@@ -624,7 +624,7 @@ void launch_dropout_grad(T* vals_out,
                          uint8_t* mask,
                          int total_count,
                          float ratio,
-                         queue* stream)
+                         queue stream)
 {
     /*
      * Dropout.Backward1
@@ -634,7 +634,7 @@ void launch_dropout_grad(T* vals_out,
     const float scale = 1. / (1. - ratio);
     range<3> grid_dim = range<3>(1, 1, DS_GET_BLOCKS(total_count / unroll_factor));
     range<3> block_dim = range<3>(1, 1, DS_CUDA_NUM_THREADS);
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             dropout_grad_kernel(total_count, scale, vals, vals_out, mask, item_ct1);
         });
@@ -645,19 +645,19 @@ template void launch_dropout_grad(float* vals_out,
                                   uint8_t* mask,
                                   int total_count,
                                   float ratio,
-                                  queue* stream);
+                                  queue stream);
 template void launch_dropout_grad(bf16* vals_out,
                                   const bf16* vals,
                                   uint8_t* mask,
                                   int total_count,
                                   float ratio,
-                                  queue* stream);
+                                  queue stream);
 template void launch_dropout_grad(half* vals_out,
                                   const half* vals,
                                   uint8_t* mask,
                                   int total_count,
                                   float ratio,
-                                  queue* stream);
+                                  queue stream);
 
 /*
  * not called in transformer kernel Shi Yuankun 2021/10/21
@@ -821,7 +821,7 @@ void launch_dropout(T* out,
                     int batch,
                     int dim,
                     float ratio,
-                    queue* stream)
+                    queue stream)
 {
     assert(unroll_factor == 4);
 
@@ -832,7 +832,7 @@ void launch_dropout(T* out,
 
     uint64_t inc = (batch * dim) / grid_dim[2] / block_dim[2];
     std::pair<uint64_t, uint64_t> seed = SyclContext::Instance().IncrementOffset(inc);
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             dropout_kernel(total_count, dim, ratio, bias, out, mask, seed, item_ct1);
         });
@@ -845,14 +845,14 @@ template void launch_dropout(float*,
                              int batch,
                              int dim,
                              float ratio,
-                             queue* stream);
+                             queue stream);
 template void launch_dropout(half*,
                              const half* bias,
                              uint8_t* mask,
                              int batch,
                              int dim,
                              float ratio,
-                             queue* stream);
+                             queue stream);
 
 void dropout_kernel(const int N,
                     const int dim,
@@ -1153,7 +1153,7 @@ void launch_dropout(T* out,
                     int batch,
                     int dim,
                     float ratio,
-                    queue* stream)
+                    queue stream)
 {
     assert(unroll_factor == 4);
 
@@ -1164,7 +1164,7 @@ void launch_dropout(T* out,
     uint64_t inc = (batch * dim) / grid_dim[2] / block_dim[2];
     std::pair<uint64_t, uint64_t> seed = SyclContext::Instance().IncrementOffset(inc);
 
-    stream->submit([&](handler& cgh) {
+    stream.submit([&](handler& cgh) {
         cgh.parallel_for(nd_range<3>(grid_dim * block_dim, block_dim), [=](nd_item<3> item_ct1) {
             dropout_kernel(
                 total_count, dim, ratio, input, residual, bias, out, mask, seed, item_ct1);
@@ -1180,7 +1180,7 @@ template void launch_dropout(float*,
                              int batch,
                              int dim,
                              float ratio,
-                             queue* stream);
+                             queue stream);
 template void launch_dropout(bf16*,
                              const bf16*,
                              const bf16* residual,
@@ -1189,7 +1189,7 @@ template void launch_dropout(bf16*,
                              int batch,
                              int dim,
                              float ratio,
-                             queue* stream);
+                             queue stream);
 template void launch_dropout(half*,
                              const half*,
                              const half* residual,
@@ -1198,4 +1198,4 @@ template void launch_dropout(half*,
                              int batch,
                              int dim,
                              float ratio,
-                             queue* stream);
+                             queue stream);

@@ -11,7 +11,7 @@
 #error "Unsupported compiler"
 #endif
 
-#include "multi_tensor_apply.dp.hpp"
+#include "multi_tensor_apply.hpp"
 #include "type_shim.hpp"
 
 #define BLOCK_SIZE 512
@@ -117,7 +117,7 @@ void test_queue_with_accessor(void)
     c10::impl::VirtualGuardImpl impl(type_);
     auto device_ = c10::Device(type_);
     c10::Stream dpcpp_stream = impl.getStream(device_);
-    sycl::queue* stream = &(xpu::get_queue_from_stream(dpcpp_stream));
+    sycl::queue stream = (xpu::get_queue_from_stream(dpcpp_stream));
     sycl::default_selector d_selector;
     static auto exception_handler = [](sycl::exception_list e_list) {
         for (std::exception_ptr const& e : e_list) {
@@ -159,20 +159,20 @@ void test_queue_with_accessor(void)
     dq.wait();
     printf("done\n");
     printf("submit xpu::stream without accessor ");
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(sycl::nd_range<1>(320 * 512, 512), [=](sycl::nd_item<1> item_ct1) {});
     });
-    stream->wait();
+    stream.wait();
     printf("done\n");
     printf("submit xpu::stream with accessor ");
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         sycl::accessor tl_block_to_tensor(block_to_tensor_buf, cgh, sycl::read_only);
         sycl::accessor tl_block_to_chunk(block_to_chunk_buf, cgh, sycl::read_only);
         sycl::accessor tl_addresses(addresses_buf, cgh, sycl::read_only);
         sycl::accessor tl_sizes(sizes_buf, cgh, sycl::read_only);
         cgh.parallel_for(sycl::nd_range<1>(320 * 512, 512), [=](sycl::nd_item<1> item_ct1) {});
     });
-    stream->wait();
+    stream.wait();
     printf("done\n");
 }
 

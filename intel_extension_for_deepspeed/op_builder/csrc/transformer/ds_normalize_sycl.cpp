@@ -36,7 +36,7 @@ std::vector<torch::Tensor> normalize_forward(const int batch,
     const T* gamma_ptr = (const T*)gamma.data_ptr();
     const T* betta_ptr = (const T*)betta.data_ptr();
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
     Normalize_Layer<T> _norm(
         typename Normalize_Layer<T>::Config(batch, seq_len, hidden_size, epsilon, true, wmean));
     _norm.SetMean(mean_ptr);
@@ -94,11 +94,11 @@ std::vector<torch::Tensor> normalize_backward(const int batch,
     T* inp_grad_ptr = (T*)input_grad.data_ptr();
     T* mean_ptr = (T*)mean.data_ptr();
     T* var_ptr = (T*)var.data_ptr();
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     Normalize_Layer<T> _norm(
         typename Normalize_Layer<T>::Config(batch, seq_len, hidden_size, epsilon, true, wmean));
-    sycl::queue* qs[2] = {q, q};
+    sycl::queue qs[2] = {q, q};
 
     _norm.SetMean(mean_ptr);
     _norm.SetVar(var_ptr);

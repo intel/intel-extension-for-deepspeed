@@ -62,7 +62,7 @@ public:
 
     virtual ~StridedBatchGemm() {}
 
-    void Forward(int bsz, T* output, const T* _buffer_a, const T* _buffer_b, sycl::queue* handle)
+    void Forward(int bsz, T* output, const T* _buffer_a, const T* _buffer_b, sycl::queue handle)
     {
         int stride_a = _config.m * _config.k;
         int stride_b = _config.n * _config.k;
@@ -101,7 +101,7 @@ public:
         }
     }
 
-    void ForwardPlusSave(T* output, const T* _buffer_a, const T* _buffer_b, sycl::queue* handle)
+    void ForwardPlusSave(T* output, const T* _buffer_a, const T* _buffer_b, sycl::queue handle)
     {
         int stride_a = _config.m * _config.k;
         int stride_b = _config.n * _config.k;
@@ -136,7 +136,7 @@ public:
                   const T* d_output,
                   const T* _buffer_a,
                   const T* _buffer_b,
-                  sycl::queue* handle,
+                  sycl::queue handle,
                   T* inpGradA = nullptr,
                   T* inpGradB = nullptr)
     {

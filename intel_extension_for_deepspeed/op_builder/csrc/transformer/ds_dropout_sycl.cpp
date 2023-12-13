@@ -23,7 +23,7 @@ std::vector<torch::Tensor> dropout_forward(float ratio,
     T* output_ptr = (T*)output.data_ptr();
     uint8_t* mask_ptr = (uint8_t*)mask.data_ptr();
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
     Dropout<T> _dropout = Dropout<T>(typename Dropout<T>::Config(ratio, dim));
     _dropout.SetMask(mask_ptr);
     _dropout.Forward(bsz, output_ptr, input_ptr, q);
@@ -57,7 +57,7 @@ std::vector<torch::Tensor> dropout_forward_with_bias(float ratio,
     T* output_ptr = (T*)output.data_ptr();
     uint8_t* mask_ptr = (uint8_t*)mask.data_ptr();
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
     Dropout<T> _dropout = Dropout<T>(typename Dropout<T>::Config(ratio, dim));
     _dropout.SetMask(mask_ptr);
     _dropout.ForwardWithBias(bsz, output_ptr, input_ptr, residual_ptr, bias_ptr, q);
@@ -74,7 +74,7 @@ std::vector<torch::Tensor> dropout_backward(float ratio,
 {
     CHECK_INPUT(vals);
     CHECK_INPUT(mask);
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
     Dropout<T> _dropout = Dropout<T>(typename Dropout<T>::Config(ratio, dim));
     uint8_t* mask_ptr = (uint8_t*)mask.data_ptr();
     _dropout.SetMask(mask_ptr);

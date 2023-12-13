@@ -26,7 +26,7 @@ public:
 
     ~FeedForward() {}
 
-    void Forward(int bsz, const T* input_ptr, const T* weights, T* out, sycl::queue* _Q)
+    void Forward(int bsz, const T* input_ptr, const T* weights, T* out, sycl::queue _Q)
     {
         if constexpr (std::is_same_v<bf16, T>) {
             float alpha = 1.0f;
@@ -64,8 +64,8 @@ public:
                   const T* weights,
                   T* weights_grad,
                   T* bias_grad,
-                  sycl::queue* _Q,
-                  sycl::queue* stream,
+                  sycl::queue _Q,
+                  sycl::queue stream,
                   T* inp_grad_out = nullptr,
                   T* out_grad_trans_out = nullptr)
     {

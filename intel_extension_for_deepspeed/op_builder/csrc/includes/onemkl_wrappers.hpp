@@ -12,7 +12,7 @@
 
 #include <stdio.h>
 
-int onemkl_gemm_ex(sycl::queue* handle,
+int onemkl_gemm_ex(sycl::queue handle,
                    oneapi::mkl::transpose transa,
                    oneapi::mkl::transpose transb,
                    int m,
@@ -24,7 +24,7 @@ int onemkl_gemm_ex(sycl::queue* handle,
                    const float* B,
                    float* C);
 
-int onemkl_gemm_ex(sycl::queue* handle,
+int onemkl_gemm_ex(sycl::queue handle,
                    oneapi::mkl::transpose transa,
                    oneapi::mkl::transpose transb,
                    int m,
@@ -36,7 +36,7 @@ int onemkl_gemm_ex(sycl::queue* handle,
                    const sycl::half* B,
                    sycl::half* C);
 
-int onemkl_strided_batched_gemm(sycl::queue* handle,
+int onemkl_strided_batched_gemm(sycl::queue handle,
                                 int m,
                                 int n,
                                 int k,
@@ -53,7 +53,7 @@ int onemkl_strided_batched_gemm(sycl::queue* handle,
                                 int batch,
                                 int algo = -1);
 
-int onemkl_strided_batched_gemm(sycl::queue* handle,
+int onemkl_strided_batched_gemm(sycl::queue handle,
                                 int m,
                                 int n,
                                 int k,

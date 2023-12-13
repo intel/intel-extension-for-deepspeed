@@ -17,14 +17,14 @@ void param_update_kernel(const float* input,
     if (id < size) { output[id] = (sycl::half)input[id]; }
 }
 
-void launch_param_update(const float* input, sycl::half* output, int size, sycl::queue* stream)
+void launch_param_update(const float* input, sycl::half* output, int size, sycl::queue stream)
 {
     int threads = 1024;
 
     sycl::range<3> grid_dim(1, 1, (size - 1) / threads + 1);
     sycl::range<3> block_dim(1, 1, threads);
 
-    stream->submit([&](sycl::handler& cgh) {
+    stream.submit([&](sycl::handler& cgh) {
         cgh.parallel_for(
             sycl::nd_range<3>(grid_dim * block_dim, block_dim),
             [=](sycl::nd_item<3> item_ct1) { param_update_kernel(input, output, size, item_ct1); });

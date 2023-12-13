@@ -39,7 +39,7 @@ std::vector<torch::Tensor> stridedbatchgemm_forward(const int batchSize,
 
     T* matC_ptr = (T*)matC.data_ptr();
 
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     _sbgemm.Forward(batchSize, matC_ptr, matA_ptr, matB_ptr, q);
     return {matC};
@@ -88,7 +88,7 @@ std::vector<torch::Tensor> stridedbatchgemm_backward(const int batchSize,
 
     T* grad_a_ptr = (T*)grad_matA.data_ptr();
     T* grad_b_ptr = (T*)grad_matB.data_ptr();
-    sycl::queue* q = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue q = ::SyclContext::Instance().GetCurrentStream();
 
     _sbgemm.Backward(batchSize, grad_c_ptr, matA_ptr, matB_ptr, q, grad_a_ptr, grad_b_ptr);
     return {grad_matA, grad_matB};
