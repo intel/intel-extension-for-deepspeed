@@ -118,7 +118,7 @@ class FlashAttentionBuilder(SYCLOpBuilder):
         return args
 
     def cxx_args(self):
-        args = ['-fsycl', '-O3', '-g', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64']
+        args = ['-fsycl', '-O3', '-std=c++20', '-w', '-fPIC', '-DMKL_ILP64']
         args += ['-fsycl-targets=spir64_gen']
         args += ["-Xs \"-device pvc -options '-vc-disable-indvars-opt -vc-codegen -doubleGRF -Xfinalizer -printregusage -Xfinalizer -enableBCR -DPASTokenReduction '\" "]
         return args
