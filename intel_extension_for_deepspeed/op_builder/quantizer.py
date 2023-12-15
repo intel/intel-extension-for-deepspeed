@@ -19,14 +19,14 @@ class QuantizerBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            'csrc/quantization/pt_binding.cpp',
-            'csrc/quantization/fake_quantizer.dp.cpp',
-            'csrc/quantization/quantize.dp.cpp',
-            'csrc/quantization/quantize_intX.dp.cpp',
-            'csrc/quantization/dequantize.dp.cpp',
-            'csrc/quantization/swizzled_quantize.dp.cpp',
-            'csrc/quantization/quant_reduce.dp.cpp',
+            sycl_kernel_path('csrc/quantization/pt_binding.cpp'),
+            sycl_kernel_path('csrc/quantization/fake_quantizer.dp.cpp'),
+            sycl_kernel_path('csrc/quantization/quantize.dp.cpp'),
+            sycl_kernel_path('csrc/quantization/quantize_intX.dp.cpp'),
+            sycl_kernel_path('csrc/quantization/dequantize.dp.cpp'),
+            sycl_kernel_path('csrc/quantization/swizzled_quantize.dp.cpp'),
+            sycl_kernel_path('csrc/quantization/quant_reduce.dp.cpp'),
         ]
 
     def include_paths(self):
-        return ['csrc/includes']
+        return [sycl_kernel_include('csrc/includes')]
