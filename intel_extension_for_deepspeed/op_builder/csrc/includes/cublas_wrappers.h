@@ -1,47 +1,62 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #pragma once
 
-#include <assert.h>
-#if __has_include(<sycl/sycl.hpp>)
 #include <sycl/sycl.hpp>
-#elif __has_include(<CL/sycl.hpp>)
-#include <CL/sycl.hpp>
-#else
-#error "Unsupported compiler"
-#endif
-#include <oneapi/mkl.hpp>
+#include <dpct/dpct.hpp>
+#include <assert.h>
+#include <dpct/blas_utils.hpp>
 
+#ifndef __HIP_PLATFORM_AMD__
+#endif
+#ifdef __HIP_PLATFORM_AMD__
+#include <rocblas/rocblas.h>
+#endif
 #include <stdio.h>
 
-int onemkl_gemm_ex(sycl::queue* handle,
+int cublas_gemm_ex(dpct::queue_ptr handle,
                    oneapi::mkl::transpose transa,
                    oneapi::mkl::transpose transb,
                    int m,
                    int n,
                    int k,
-                   const float alpha,
-                   const float beta,
+                   const float* alpha,
+                   const float* beta,
                    const float* A,
                    const float* B,
-                   float* C);
+                   float* C,
+#ifdef __HIP_PLATFORM_AMD__
+                   rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
+#else
+                   int algo = -1);
+#endif
 
-int onemkl_gemm_ex(sycl::queue* handle,
+int cublas_gemm_ex(dpct::queue_ptr handle,
                    oneapi::mkl::transpose transa,
                    oneapi::mkl::transpose transb,
                    int m,
                    int n,
                    int k,
-                   const sycl::half alpha,
-                   const sycl::half beta,
+                   const float* alpha,
+                   const float* beta,
                    const sycl::half* A,
                    const sycl::half* B,
-                   sycl::half* C);
+                   sycl::half* C,
+#ifdef __HIP_PLATFORM_AMD__
+                   rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
+#else
+                   int algo = 99);
+#endif
 
-int onemkl_strided_batched_gemm(sycl::queue* handle,
+int cublas_strided_batched_gemm(dpct::queue_ptr handle,
                                 int m,
                                 int n,
                                 int k,
-                                const float alpha,
-                                const float beta,
+                                const float* alpha,
+                                const float* beta,
                                 const float* A,
                                 const float* B,
                                 float* C,
@@ -51,14 +66,18 @@ int onemkl_strided_batched_gemm(sycl::queue* handle,
                                 int stride_B,
                                 int stride_C,
                                 int batch,
+#ifdef __HIP_PLATFORM_AMD__
+                                rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
+#else
                                 int algo = -1);
+#endif
 
-int onemkl_strided_batched_gemm(sycl::queue* handle,
+int cublas_strided_batched_gemm(dpct::queue_ptr handle,
                                 int m,
                                 int n,
                                 int k,
-                                const sycl::half alpha,
-                                const sycl::half beta,
+                                const float* alpha,
+                                const float* beta,
                                 const sycl::half* A,
                                 const sycl::half* B,
                                 sycl::half* C,
@@ -68,4 +87,8 @@ int onemkl_strided_batched_gemm(sycl::queue* handle,
                                 int stride_B,
                                 int stride_C,
                                 int batch,
+#ifdef __HIP_PLATFORM_AMD__
+                                rocblas_gemm_algo algo = rocblas_gemm_algo_standard);
+#else
                                 int algo = 99);
+#endif
