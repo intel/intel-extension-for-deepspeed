@@ -5,10 +5,11 @@
 
 import distutils.spawn
 import subprocess
+import torch
 
-from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
+from deepspeed.ops.op_builder.builder import OpBuilder, TORCH_MAJOR, TORCH_MINOR
 
-class AsyncIOBuilder(SYCLOpBuilder):
+class AsyncIOBuilder(OpBuilder):
     BUILD_VAR = "DS_BUILD_AIO"
     NAME = "async_io"
 
@@ -24,7 +25,7 @@ class AsyncIOBuilder(SYCLOpBuilder):
             'csrc/aio/py_lib/deepspeed_py_aio.cpp', 'csrc/aio/py_lib/deepspeed_py_aio_handle.cpp',
             'csrc/aio/py_lib/deepspeed_aio_thread.cpp', 'csrc/aio/common/deepspeed_aio_utils.cpp',
             'csrc/aio/common/deepspeed_aio_common.cpp', 'csrc/aio/common/deepspeed_aio_types.cpp',
-            'csrc/aio/py_lib/deepspeed_pin_tensor.cpp',
+            'csrc/aio/py_lib/deepspeed_pin_tensor.cpp'
         ]
 
     def include_paths(self):
@@ -34,11 +35,16 @@ class AsyncIOBuilder(SYCLOpBuilder):
         # -O0 for improved debugging, since performance is bound by I/O
         CPU_ARCH = self.cpu_arch()
         SIMD_WIDTH = self.simd_width()
+        TORCH_MAJOR, TORCH_MINOR = map(int, torch.__version__.split('.')[0:2])
+        if TORCH_MAJOR >= 2 and TORCH_MINOR >= 1:
+            CPP_STD = '-std=c++17'
+        else:
+            CPP_STD = '-std=c++14'
         return [
             '-g',
             '-Wall',
             '-O0',
-            '-std=c++20',
+            CPP_STD,
             '-shared',
             '-fPIC',
             '-Wno-reorder',
@@ -49,7 +55,7 @@ class AsyncIOBuilder(SYCLOpBuilder):
         ]
 
     def extra_ldflags(self):
-        return []
+        return ['-laio']
 
     def check_for_libaio_pkg(self):
         libs = dict(
@@ -78,7 +84,7 @@ class AsyncIOBuilder(SYCLOpBuilder):
         # which is a function provided by libaio that is used in the async_io op.
         # If needed, one can define -I and -L entries in CFLAGS and LDFLAGS
         # respectively to specify the directories for libaio.h and libaio.so.
-        aio_compatible = self.has_function('io_submit', ('aio', ))
+        aio_compatible = self.has_function('io_pgetevents', ('aio', ))
         if verbose and not aio_compatible:
             self.warning(f"{self.NAME} requires the dev libaio .so object and headers but these were not found.")
 

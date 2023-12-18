@@ -1,6 +1,11 @@
+// Copyright (c) Microsoft Corporation.
+// SPDX-License-Identifier: Apache-2.0
+
+// DeepSpeed Team
+
 #include <torch/extension.h>
 
-void multi_tensor_adam_sycl(int chunk_size,
+void multi_tensor_adam_cuda(int chunk_size,
                             at::Tensor noop_flag,
                             std::vector<std::vector<at::Tensor>> tensor_lists,
                             const float lr,
@@ -15,6 +20,6 @@ void multi_tensor_adam_sycl(int chunk_size,
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     m.def("multi_tensor_adam",
-          &multi_tensor_adam_sycl,
+          &multi_tensor_adam_cuda,
           "Compute and apply gradient update to parameters for Adam optimizer");
 }

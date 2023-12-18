@@ -1,3 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+
+# DeepSpeed Team
+
 from .builder import SYCLOpBuilder, sycl_kernel_path, sycl_kernel_include
 
 
@@ -17,16 +22,22 @@ class InferenceBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/transformer/inference/csrc/softmax.cpp'),
             sycl_kernel_path('csrc/transformer/inference/csrc/pt_binding.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/gelu.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onednn_wrappers.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/inference_onemkl_wrappers.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.cpp'),
-            sycl_kernel_path('csrc/transformer/inference/csrc/pointwise_ops.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/gelu.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/relu.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/layer_norm.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/rms_norm.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/softmax.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/dequantize.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/apply_rotary_pos_emb.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/transform.dp.cpp'),
+            sycl_kernel_path('csrc/transformer/inference/csrc/pointwise_ops.dp.cpp'),
         ]
 
     def include_paths(self):
-        includes = [sycl_kernel_include('csrc/transformer/inference/includes'), 'csrc/transformer/inference/includes']
+        includes = [
+            sycl_kernel_include('csrc/transformer/inference/includes'),
+            sycl_kernel_include('csrc/includes'),
+        ]
         return includes
 
