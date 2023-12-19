@@ -21,7 +21,7 @@
 
 #ifndef SYCL_CUDA_STREAM
 #define SYCL_CUDA_STREAM
-namespace quant {
+namespace dpct {
 namespace at {
   namespace cuda {
     dpct::queue_ptr getCurrentCUDAStream() {
@@ -121,11 +121,11 @@ public:
     dpct::queue_ptr GetCurrentStream()
     {
         // get current pytorch stream.
-        dpct::queue_ptr stream = quant::at::cuda::getCurrentCUDAStream();
+        dpct::queue_ptr stream = dpct::at::cuda::getCurrentCUDAStream();
         return stream;
     }
 
-    dpct::queue_ptr GetNewStream() { return quant::at::cuda::getStreamFromPool(); }
+    dpct::queue_ptr GetNewStream() { return dpct::at::cuda::getStreamFromPool(); }
 
     dpct::queue_ptr GetCublasHandle() { return _cublasHandle; }
 
