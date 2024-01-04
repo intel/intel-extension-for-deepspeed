@@ -147,6 +147,17 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def is_triton_supported(self):
         return False
 
+    # Graph operations
+    def create_graph(self):
+        return None
+
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
+
+    def replay_graph(self, graph):
+        return
+
     def available_memory(self, device_index=None):
         return self.total_memory(device_index) - self.memory_allocated(device_index)
 
