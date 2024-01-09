@@ -16,8 +16,9 @@ class CPUAdamBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/adam/cpu_adam.dp.cpp'),
-            sycl_kernel_path('csrc/adam/custom_sycl_kernel.dp.cpp'),
+            sycl_kernel_path('csrc/adam/cpu_adam.cpp'),
+            sycl_kernel_path('csrc/adam/cpu_adam_impl.cpp'),
+            sycl_kernel_path('csrc/common/custom_cuda_kernel.dp.cpp'),
         ]
 
     def libraries_args(self):
@@ -27,5 +28,4 @@ class CPUAdamBuilder(SYCLOpBuilder):
     def include_paths(self):
         return [
             sycl_kernel_include('csrc/includes'),
-            sycl_kernel_include('csrc/adam'), 'csrc/includes'
         ]

@@ -23,7 +23,7 @@ class FusedAdamBuilder(SYCLOpBuilder):
     def include_paths(self):
         return [
             sycl_kernel_include('csrc/includes'),
-            sycl_kernel_include('csrc/adam'), 'csrc/includes'
+            sycl_kernel_include('csrc/adam'),
         ]
 
     def cxx_args(self):
