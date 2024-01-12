@@ -21,10 +21,9 @@
 
 #ifndef SYCL_CUDA_STREAM
 #define SYCL_CUDA_STREAM
-namespace quant {
 namespace at {
   namespace cuda {
-    dpct::queue_ptr getCurrentCUDAStream() {
+    inline dpct::queue_ptr getCurrentCUDAStream() {
       auto device_type = c10::DeviceType::XPU;
       c10::impl::VirtualGuardImpl impl(device_type);
       c10::Stream c10_stream = impl.getStream(c10::Device(device_type));
@@ -32,17 +31,16 @@ namespace at {
       return &queue;
     }
 
-    dpct::queue_ptr getStreamFromPool(bool) {
+    inline dpct::queue_ptr getStreamFromPool(bool) {
       // not implemented
       return nullptr;
     }
     
-    dpct::queue_ptr getStreamFromPool() {
+    inline dpct::queue_ptr getStreamFromPool() {
       // not implemented
       return nullptr;
     }
   }
-}
 }
 #endif
 
@@ -121,11 +119,11 @@ public:
     dpct::queue_ptr GetCurrentStream()
     {
         // get current pytorch stream.
-        dpct::queue_ptr stream = quant::at::cuda::getCurrentCUDAStream();
+        dpct::queue_ptr stream = at::cuda::getCurrentCUDAStream();
         return stream;
     }
 
-    dpct::queue_ptr GetNewStream() { return quant::at::cuda::getStreamFromPool(); }
+    dpct::queue_ptr GetNewStream() { return at::cuda::getStreamFromPool(); }
 
     dpct::queue_ptr GetCublasHandle() { return _cublasHandle; }
 

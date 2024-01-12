@@ -1,5 +1,5 @@
 #include <torch/extension.h>
-#include "context.hpp"
+#include "context.h"
 #include "flash_attn.hpp"
 
 // [Bs, Hn, Sl, Hs]
@@ -39,7 +39,7 @@ std::vector<torch::Tensor> flash_attn_fwd(const torch::Tensor &q,
         drop_mask_ptr = (void *)dropout_mask.data_ptr();
     }
 
-    sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue* stream = ::TrainingContext::Instance().GetCurrentStream();
     FlashAttention _flash_attn = FlashAttention();
     _flash_attn.Forward(
         *stream,
@@ -97,7 +97,7 @@ std::vector<torch::Tensor> flash_attn_bwd(const torch::Tensor &gradout,
     void *drop_mask_ptr = nullptr;
     void *grad_softmax = nullptr;
 
-    sycl::queue* stream = ::SyclContext::Instance().GetCurrentStream();
+    sycl::queue* stream = ::TrainingContext::Instance().GetCurrentStream();
     FlashAttention _flash_attn = FlashAttention();
     _flash_attn.Backward(
         *stream,
