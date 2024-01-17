@@ -240,7 +240,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder, AsyncIOBuilder
+        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder, AsyncIOBuilder
         from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
 
         if class_name == "AsyncIOBuilder":
@@ -251,6 +251,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return CPUAdamBuilder
         elif class_name == "FusedAdamBuilder":
             return FusedAdamBuilder
+        elif class_name == "QuantizerBuilder":
+            return QuantizerBuilder
         elif class_name == "SparseAttnBuilder":
             return SparseAttnBuilder
         elif class_name == "UtilsBuilder":

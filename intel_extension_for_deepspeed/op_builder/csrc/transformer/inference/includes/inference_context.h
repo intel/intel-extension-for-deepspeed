@@ -22,7 +22,7 @@
 
 namespace at {
   namespace cuda {
-    dpct::queue_ptr getCurrentCUDAStream() {
+    inline dpct::queue_ptr getCurrentCUDAStream() {
       auto device_type = c10::DeviceType::XPU;
       c10::impl::VirtualGuardImpl impl(device_type);
       c10::Stream c10_stream = impl.getStream(c10::Device(device_type));
@@ -30,7 +30,7 @@ namespace at {
       return &queue;
     }
 
-    dpct::queue_ptr getStreamFromPool(bool) {
+    inline dpct::queue_ptr getStreamFromPool(bool) {
       // not implemented
       return nullptr;
     }

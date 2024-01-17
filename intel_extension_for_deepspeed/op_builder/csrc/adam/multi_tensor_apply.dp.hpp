@@ -16,30 +16,11 @@ This file is adapted from fused adam in NVIDIA/apex, commit a109f85
 // #include <ATen/cuda/Exceptions.h>
 #include <ipex.h>
 #include "compat.h"
+#include "context.h"
 
 #include <assert.h>
 #include <tuple>
 #include <utility>
-
-namespace at {
-namespace cuda {
-dpct::queue_ptr getCurrentCUDAStream()
-{
-    auto device_type = c10::DeviceType::XPU;
-    c10::impl::VirtualGuardImpl impl(device_type);
-    c10::Stream c10_stream = impl.getStream(c10::Device(device_type));
-    auto& queue = xpu::get_queue_from_stream(c10_stream);
-    return &queue;
-}
-
-dpct::queue_ptr getStreamFromPool(bool)
-{
-    // not implemented
-    return nullptr;
-}
-}  // namespace cuda
-}  // namespace at
-// #include <iostream>
 
 // This header is the one-stop shop for all your multi-tensor apply needs.
 
