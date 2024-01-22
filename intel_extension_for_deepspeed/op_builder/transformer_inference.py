@@ -20,6 +20,11 @@ class InferenceBuilder(SYCLOpBuilder):
     def is_compatible(self, verbose=True):
         return super().is_compatible(verbose)
 
+    def cxx_args(self):
+        args = super().cxx_args()
+        args.append('-DBF16_AVAILABLE')
+        return args
+
     def sources(self):
         return [
             sycl_kernel_path('csrc/transformer/inference/csrc/pt_binding.cpp'),
