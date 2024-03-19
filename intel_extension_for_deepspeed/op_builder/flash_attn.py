@@ -13,7 +13,7 @@ flash_attn_module = None
 class FlashAttnFunc(Function):
 
     @staticmethod
-    def forward(ctx, q, k, v, dropout_p, softmax_scale, causal, return_softmax, return_mask):
+    def forward(ctx, query, key, value, dropout_p, softmax_scale, is_causal):
         """
         Shape of qkv and out: [Bs, Hn, Sl, Hs]
         Bs: batch size
@@ -21,37 +21,39 @@ class FlashAttnFunc(Function):
         Sl: sequence length
         Hs: head size
         """
-        bs, hn, sl, hs = q.shape
+        bs, hn, sl, hs = query.shape
         if softmax_scale is None:
             softmax_scale = hs ** (-0.5)
-        dropout_scale = 1.0 / (1.0 - dropout_p)
         dropout_seed = torch.seed()
+        is_training = True
+        is_dropout = (dropout_p != 0)
 
-        out, softmax_L, softmax_m = flash_attn_module.flash_attn_fwd(
-            q, k, v, bs, hn, sl, hs, softmax_scale,
-            dropout_p, dropout_scale, dropout_seed, causal, return_softmax, return_mask
+        out, softmax_L = flash_attn_module.flash_attn_fwd(
+            query, key, value, bs, hn, sl, hs, softmax_scale,
+            dropout_p, dropout_seed,
+            is_causal, is_training, is_dropout
         )
 
-        ctx.save_for_backward(q, k, v, out, softmax_L, softmax_m)
+        ctx.save_for_backward(query, key, value, out, softmax_L)
         ctx.dropout_p = dropout_p
-        ctx.dropout_scale = dropout_scale
         ctx.dropout_seed = dropout_seed
         ctx.softmax_scale = softmax_scale
-        ctx.causal = causal
-        ctx.return_softmax = return_softmax
-        return out if not return_softmax else (out, softmax_L)
+        ctx.is_causal = is_causal
+        ctx.is_dropout = is_dropout
+
+        return out
 
     @staticmethod
     def backward(ctx, dout, *args):
-        q, k, v, out, softmax_L, softmax_m = ctx.saved_tensors
+        q, k, v, out, softmax_L = ctx.saved_tensors
         bs, hn, sl, hs = q.shape
 
         dq, dk, dv = flash_attn_module.flash_attn_bwd(
             dout, q, k, v, out, bs, hn, sl, hs, ctx.softmax_scale,
-            ctx.dropout_p, ctx.dropout_scale, ctx.dropout_seed, ctx.causal,
-            ctx.return_softmax, softmax_L, softmax_m
+            ctx.dropout_p, ctx.dropout_seed,
+            ctx.is_causal, ctx.is_dropout, softmax_L
         )
-        return dq, dk, dv, None, None, None, None, None
+        return dq, dk, dv, None, None, None
 
 
 class FlashAttentionBuilderObject():
@@ -60,10 +62,9 @@ class FlashAttentionBuilderObject():
     
     # general functions
     def flash_attn_func(self, q, k, v,
-            dropout_p, softmax_scale, causal, return_softmax=False, return_mask=False):
-        if q.shape[-1] in [128, 96] and q.dtype is torch.bfloat16:
-            return FlashAttnFunc.apply(q, k, v,
-                dropout_p, softmax_scale, causal, return_softmax, return_mask)
+            dropout_p, softmax_scale, is_causal):
+        if q.dtype is torch.bfloat16:
+            return FlashAttnFunc.apply(q, k, v, dropout_p, softmax_scale, is_causal)
         else:
             return self.flash_attn_fwd_func(q, k, v, dropout_p)
 
@@ -97,18 +98,18 @@ class FlashAttentionBuilder(SYCLOpBuilder):
     def sources(self):
         return [
             sycl_kernel_path('csrc/flash_attn/flash_attn.dp.cpp'),
-            sycl_kernel_path('csrc/flash_attn/flash_attn_fwd.cpp'),
-            sycl_kernel_path('csrc/flash_attn/flash_attn_bwd.cpp'),
+            sycl_kernel_path('csrc/flash_attn/fmha_fwd.cpp'),
+            sycl_kernel_path('csrc/flash_attn/fmha_bwd.cpp'),
         ]
 
     def include_paths(self):
         return [
             sycl_kernel_include('csrc/includes'),
-            sycl_kernel_include('csrc/includes/flash_attn'),
+            sycl_kernel_include('csrc/flash_attn'),
             sycl_kernel_include('../../third_party/xetla/include'),
             'csrc/includes',
+            'csrc/flash_attn',
             '../../third_party/xetla/include',
-            'csrc/includes/flash_attn',
         ]
 
     def extra_ldflags(self):
