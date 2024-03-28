@@ -61,7 +61,7 @@ class FlashAttentionBuilderObject():
     # general functions
     def flash_attn_func(self, q, k, v,
             dropout_p, softmax_scale, is_causal):
-        if q.dtype is torch.bfloat16:
+        if q.shape[-1] <= 256:
             return FlashAttnFunc.apply(q, k, v, dropout_p, softmax_scale, is_causal)
         else:
             return self.flash_attn_fwd_func(q, k, v, dropout_p)
