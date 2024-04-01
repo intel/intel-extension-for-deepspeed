@@ -62,6 +62,7 @@ public:
                   void* gradout,
                   void* softmax_workspace, // [Bs*Hn, 1, Sl]: row_max + log(row_sum)
                   void* d_buffer, // temp buffer for D = O pointmul dO [Bs*Hn, 1, Sl]
+                  void* dq_acc,
                   uint32_t num_batches,
                   uint32_t num_heads,
                   uint32_t head_size,
@@ -88,6 +89,7 @@ public:
             out,
             softmax_workspace,
             d_buffer,
+            dq_acc,
             hs_rsqrt_scale,
             dropout_prob,
             dq,

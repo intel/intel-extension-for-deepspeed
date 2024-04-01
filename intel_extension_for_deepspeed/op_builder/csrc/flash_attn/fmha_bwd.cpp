@@ -26,6 +26,7 @@ class fmha_backward_t {
     scalar_t* O_ptr; // [B, F, N, H] - output
     accum_t* L_ptr; // [B, N, F]
     accum_t* D_ptr; // [B, N, F]
+    accum_t* dQ_acc_ptr;
     // Dropout scale is computed from dropout prob
     accum_t dp_prob;
     accum_t dp_scale;
@@ -57,6 +58,7 @@ class fmha_backward_t {
         scalar_t* out,
         accum_t* l,
         accum_t* d,
+        accum_t* grad_q_tmp,
         accum_t dropout_prob,
         scalar_t* grad_query,
         scalar_t* grad_key,
@@ -77,6 +79,7 @@ class fmha_backward_t {
           O_ptr(out),
           L_ptr(l),
           D_ptr(d),
+          dQ_acc_ptr(grad_q_tmp),
           dp_prob(dropout_prob),
           dp_scale(1.f / (1.f - dropout_prob)),
           dQ_ptr(grad_query),
@@ -159,6 +162,8 @@ class fmha_backward_t {
       mem_desc_t<scalar_t, mem_layout::row_major, mem_space::local>;
   using mem_desc_dQi_t =
       mem_desc_t<scalar_t, mem_layout::row_major, mem_space::global>;
+  using mem_desc_dQi_acc_t =
+      mem_desc_t<accum_t, mem_layout::row_major, mem_space::global>;
   using mem_desc_dKj_t =
       mem_desc_t<scalar_t, mem_layout::row_major, mem_space::global>;
   using mem_desc_dVj_t =
@@ -211,7 +216,8 @@ class fmha_backward_t {
     mem_desc_Pij_L_T_t mem_desc_Pij_L_T;
     mem_desc_dSij_L_t mem_desc_dSij_L;
     mem_desc_dSij_L_T_t mem_desc_dSij_L_T;
-    mem_desc_dQi_t mem_desc_dQi, mem_desc_dQi_tile;
+    mem_desc_dQi_t mem_desc_dQi;
+    mem_desc_dQi_acc_t mem_desc_dQi_acc;
     mem_desc_dKj_t mem_desc_dKj;
     mem_desc_dVj_t mem_desc_dVj;
     dropout_t dropout_op;
@@ -234,6 +240,31 @@ class fmha_backward_t {
       nbarrier_y.init_nbarrier(
           wg_size_y + sg_idx, nbarrier_role::producer_consumer);
       // softmax statistics
+    }
+
+    /// @brief Initialize update for dQ variables in the flash mha loop
+    inline void update_context_dQ(
+        const xetla_exec_item<3>& ei,
+        const arguments_t& args,
+        uint32_t startF) {
+      // mem desc variables
+      uint32_t gid = ei.get_group(0);
+      uint32_t bid = ei.get_group(0) / args.uN;
+      uint32_t nid = ei.get_group(0) % args.uN;
+      int32_t start_x = nid * args.uH;
+      uint32_t end_x = start_x + args.uH;
+      int32_t start_y = bid * args.uF + startF;
+      uint32_t end_y = start_y + kBr;
+      uint32_t boundary_y = (bid + 1) * args.uF;
+      end_y = end_y > boundary_y ? boundary_y : end_y;
+      uint32_t pitch = args.uH * args.uN;
+
+      mem_desc_dQi.init(args.dQ_ptr, {end_x, end_y, pitch}, {start_x, start_y});
+      mem_desc_dQi_acc.init(
+          args.dQ_acc_ptr,
+          {end_x, end_y, pitch},
+          {int32_t(start_x + sg_idx * kSgHm),
+           int32_t(start_y + sg_idy * kSgBr)});
     }
 
     /// @brief Initialize update for D variables in the flash mha loop
@@ -291,7 +322,11 @@ class fmha_backward_t {
       uint32_t pitch = args.uH * args.uN;
 
       mem_desc_Qi.init(args.Q_ptr, {end_x, end_y, pitch}, {start_x, start_y});
-      mem_desc_dQi.init(args.dQ_ptr, {end_x, end_y, pitch}, {start_x, start_y});
+      mem_desc_dQi_acc.init(
+          args.dQ_acc_ptr,
+          {end_x, end_y, pitch},
+          {int32_t(start_x + sg_idx * kSgHm),
+           int32_t(start_y + sg_idy * kSgBr)});
       mem_desc_dOi.init(args.dO_ptr, {end_x, end_y, pitch}, {start_x, start_y});
 
       int32_t start_x_ml = startF + sg_idy * kSgBr;
@@ -304,11 +339,6 @@ class fmha_backward_t {
           args.D_ptr,
           {args.uF, args.uB * args.uN, args.uF},
           {start_x_ml, start_y_ml});
-      mem_desc_dQi_tile.init(
-          args.dQ_ptr,
-          {end_x, end_y, pitch},
-          {int32_t(start_x + sg_idx * kSgHm),
-           int32_t(start_y + sg_idy * kSgBr)});
 
       mem_desc_Pij_L_T.init(Pij_slm, {kBr, kBc, kBr}, {0, 0});
       mem_desc_dSij_L.init(Sij_slm, {kBc, kBr, kBc}, {0, 0});
@@ -579,19 +609,6 @@ class fmha_backward_t {
       matAcc_dQi_t* matAcc_dQi,
       const arguments_t& args,
       uint32_t startT) {
-    using load_desc = brgemm_dQi_t::matAcc_tile_desc_t;
-    using load_tile_t = subgroup::tile_t<scalar_t, load_desc>;
-    using load_payload_t = subgroup::mem_payload_t<
-        scalar_t,
-        load_desc,
-        msg_type::block_2d,
-        mem_layout::row_major,
-        mem_space::global>;
-
-    load_tile_t mat_dQ_load;
-    load_payload_t load_payload(ctx.mem_desc_dQi_tile);
-    subgroup::tile_load(mat_dQ_load, load_payload);
-
     using brgemm_args_t = typename brgemm_dQi_t::arguments_t;
 
     uint32_t remainT = args.uT - startT;
@@ -607,7 +624,6 @@ class fmha_backward_t {
         brgemm_args,
         0,
         /* nbarrier_base */ nbarrier_cnt);
-    matAcc_dQi->reg = args.sm_scale * matAcc_dQi->reg + mat_dQ_load.reg;
 
     xetla_fence<memory_kind::shared_local>();
     if constexpr (wg_size_x > 1)
@@ -666,15 +682,15 @@ class fmha_backward_t {
   // ==================== // store dQ, dK and dV // ====================== //
 
   /// @brief store raw dQi to global memory.
-  inline void store_dQi(
-      const matAcc_dQi_t& matAcc_dQi,
-      const arguments_t& args) {
-    using epilogue_t = group::epilogue_t<
-        group::epilogue_policy_default<result_overwrite, gpu_arch::Xe>,
-        tile_shape_BrHm,
-        mem_desc_dQi_t>;
-    epilogue_t epilogue;
-    epilogue(ctx.g_brhm, matAcc_dQi, ctx.mem_desc_dQi);
+  inline void store_dQi(matAcc_dQi_t& matAcc_dQi, const arguments_t& args) {
+    using store_t = subgroup::mem_payload_t<
+        accum_t,
+        typename matAcc_dQi_t::tile_desc,
+        msg_type::atomic_add,
+        mem_layout::row_major,
+        mem_space::global>;
+    store_t dQ_store(ctx.mem_desc_dQi_acc);
+    subgroup::tile_store(matAcc_dQi, dQ_store);
   }
 
   /// @brief store raw dKj to global memory.
@@ -758,6 +774,36 @@ class fmha_backward_t {
     if (ctx.sg_idx == 0) {
       subgroup::tile_store(matD_store, store_payload_D);
     }
+  }
+
+  // ======================= // convert_dQ // ======================= //
+
+  /// @brief convert_dQ is used to convert dQ from fp32 to bf16
+  inline void convert_dQ(const arguments_t& args) {
+    // load matAcc_dQ
+    using load_payload_t = subgroup::mem_payload_t<
+        accum_t,
+        typename brgemm_dQi_t::matAcc_tile_desc_t,
+        msg_type::block_2d,
+        mem_layout::row_major,
+        mem_space::global>;
+
+    matAcc_dQi_t matdQ_load;
+    // mat_dQi_t matdQ;
+
+    load_payload_t load_payload(ctx.mem_desc_dQi_acc);
+    subgroup::tile_load(matdQ_load, load_payload);
+
+    matdQ_load.reg *= args.sm_scale;
+
+    // subgroup::elemwise_cvt(matdQ, matdQ_load);
+
+    using epilogue_t = group::epilogue_t<
+        group::epilogue_policy_default<result_overwrite, gpu_arch::Xe>,
+        tile_shape_BrHm,
+        mem_desc_dQi_t>;
+    epilogue_t epilogue;
+    epilogue(ctx.g_brhm, matdQ_load, ctx.mem_desc_dQi);
   }
 
  public:
@@ -860,6 +906,11 @@ class fmha_backward_t {
       store_dKj(matAcc_dKj, args);
       store_dVj(matAcc_dVj, args);
     }
+
+    for (uint32_t startF = 0; startF < args.uF; startF += kBr) {
+      ctx.update_context_dQ(ei, args, startF);
+      convert_dQ(args);
+    }
   }
 }; // fmha_backward_t
 
@@ -880,6 +931,7 @@ struct FmhaBackwardKernelFunctor {
         out,
         (accscalar_t*)log_sumexp,
         (accscalar_t*)workspace,
+        (accscalar_t*)grad_q_tmp,
         (accscalar_t)dropout_prob,
         grad_query,
         grad_key,
@@ -905,6 +957,7 @@ struct FmhaBackwardKernelFunctor {
       T* out_,
       void* log_sumexp_,
       void* workspace_,
+      void* grad_q_tmp_,
       float dropout_prob_,
       T* grad_query_,
       T* grad_key_,
@@ -925,6 +978,7 @@ struct FmhaBackwardKernelFunctor {
         out(out_),
         log_sumexp(log_sumexp_),
         workspace(workspace_),
+        grad_q_tmp(grad_q_tmp_),
         dropout_prob(dropout_prob_),
         grad_query(grad_query_),
         grad_key(grad_key_),
@@ -947,6 +1001,7 @@ struct FmhaBackwardKernelFunctor {
   T* out;
   void* log_sumexp;
   void* workspace;
+  void* grad_q_tmp;
   float dropout_prob;
   T* grad_query;
   T* grad_key;
@@ -977,6 +1032,7 @@ void xetla_fmha_backward_kernel(
     T* out,
     void* log_sumexp,
     void* workspace,
+    void* grad_q_tmp,
     float alpha,
     float dropout_prob,
     T* grad_query,
@@ -1020,6 +1076,7 @@ void xetla_fmha_backward_kernel(
         out,
         log_sumexp,
         workspace,
+        grad_q_tmp,
         dropout_prob,
         grad_query,
         grad_key,
@@ -1048,6 +1105,7 @@ void xetla_fmha_backward_kernel(
       out,                                                                 \
       log_sumexp,                                                          \
       workspace,                                                           \
+      grad_q_tmp,                                                          \
       alpha,                                                               \
       dropout_prob,                                                        \
       grad_query,                                                          \
@@ -1076,6 +1134,7 @@ void fmha_backward_kernel_policy(
     T* out,
     void* log_sumexp,
     void* workspace,
+    void* grad_q_tmp,
     float alpha,
     float dropout_prob,
     T* grad_query,
@@ -1114,6 +1173,7 @@ void dispatch_fmha_backward(
     T* out,
     void* log_sumexp,
     void* workspace,
+    void* grad_q_tmp,
     float alpha,
     float dropout_prob,
     T* grad_query,
@@ -1136,6 +1196,7 @@ void dispatch_fmha_backward(
       out,
       log_sumexp,
       workspace,
+      grad_q_tmp,
       alpha,
       dropout_prob,
       grad_query,
@@ -1162,6 +1223,7 @@ void dispatch_fmha_backward(
     T* out,
     void* log_sumexp,
     void* workspace,
+    void* grad_q_tmp,
     float alpha,
     float dropout_prob,
     T* grad_query,
@@ -1187,6 +1249,7 @@ void dispatch_fmha_backward(
         out,
         log_sumexp,
         workspace,
+        grad_q_tmp,
         alpha,
         dropout_prob,
         grad_query,
@@ -1211,6 +1274,7 @@ void dispatch_fmha_backward(
         out,
         log_sumexp,
         workspace,
+        grad_q_tmp,
         alpha,
         dropout_prob,
         grad_query,
@@ -1238,6 +1302,7 @@ void fmha_backward_kernel_impl(
     T* out,
     void* log_sumexp,
     void* workspace,
+    void* grad_q_tmp,
     float alpha,
     float dropout_prob,
     T* grad_query,
@@ -1263,6 +1328,7 @@ void fmha_backward_kernel_impl(
       out,
       log_sumexp,
       workspace,
+      grad_q_tmp,
       alpha,
       dropout_prob,
       grad_query,
@@ -1291,6 +1357,7 @@ void fmha_backward_kernel(
     void* out,
     void* log_sumexp,
     void* workspace,
+    void* grad_q_tmp,
     float alpha,
     float dropout_prob,
     void* grad_query,
@@ -1316,6 +1383,7 @@ void fmha_backward_kernel(
         (fp16*)out,
         log_sumexp,
         workspace,
+        grad_q_tmp,
         alpha,
         dropout_prob,
         (fp16*)grad_query,
@@ -1341,6 +1409,7 @@ void fmha_backward_kernel(
         (bf16*)out,
         log_sumexp,
         workspace,
+        grad_q_tmp,
         alpha,
         dropout_prob,
         (bf16*)grad_query,
