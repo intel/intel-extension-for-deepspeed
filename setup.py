@@ -45,8 +45,6 @@ def create_ext_modules(op_name=""):
         '-fsycl', '-fPIC', '-Wl,-export-dynamic', '-fsycl-targets=spir64_gen',
         "-Xs \"-device pvc -options '-vc-disable-indvars-opt -vc-codegen -doubleGRF -Xfinalizer -printregusage -Xfinalizer -enableBCR -DPASTokenReduction '\" "
     ]
-    print("cpp_files: " + str(cpp_files))
-    print("include_dirs: " + str(include_dirs))
     ext_modules = [
         DPCPPExtension(name="fmha_module",
                        sources=cpp_files,

@@ -59,7 +59,7 @@ class FlashAttentionBuilderObject():
         pass
     
     # general functions
-    def flash_attn_func(self, q, k, v,
+    def flash_attn_func_v2(self, q, k, v,
             dropout_p, softmax_scale, is_causal):
         if q.shape[-1] <= 256:
             return FlashAttnFunc.apply(q, k, v, dropout_p, softmax_scale, is_causal)
