@@ -62,7 +62,6 @@ void fmha_backward_kernel(
     void* out,
     void* log_sumexp,
     void* workspace,
-    void* grad_q_tmp,
     float alpha,
     float dropout_prob,
     void* grad_query,
