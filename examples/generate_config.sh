@@ -47,7 +47,7 @@ flops_profiler="\
 
 if [[ $DTYPE == "bf16" ]]; then
 dtype="\
-    \"communication_data_type\": \"bf16\",
+    \"communication_data_type\": \"bfp16\",
     \"fp16\": {
       \"enabled\": false,
       \"loss_scale\": 0,
