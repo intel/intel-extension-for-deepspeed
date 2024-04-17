@@ -104,9 +104,6 @@ zero="\
   if [ $ZERO_STAGE == 1 ]; then
     if [ $PP > 1 ]; then
     extra="\
-        \"data_types\": {
-          \"grad_accum_dtype\": \"fp32\"
-        },
         \"comms_logger\": {
           \"enabled\": true,
           \"verbose\": false,
