@@ -8,9 +8,20 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def __init__(self):
         self._name = 'xpu'
         self._communication_backend_name = 'ccl'
+        self._compile_backend = "inductor"
+        self.aligned_tensors = []
 
     def is_synchronized_device(self):
         return False
+
+    def use_host_timers(self):
+        return self.is_synchronized_device()
+
+    def resolves_data_dependency(self):
+        return self.is_synchronized_device()
+
+    def handles_memory_backpressure(self):
+        return self.is_synchronized_device()
 
     # Device APIs
     def device_name(self, device_index=None):
@@ -143,6 +154,23 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def communication_backend_name(self):
         return self._communication_backend_name
 
+    def is_triton_supported(self):
+        return False
+
+    # Graph operations
+    def create_graph(self):
+        return None
+
+    def capture_to_graph(self, graph, pool=None, stream=None):
+        from deepspeed.runtime.utils import noop_context
+        return noop_context()
+
+    def replay_graph(self, graph):
+        return
+
+    def available_memory(self, device_index=None):
+        return self.total_memory(device_index) - self.memory_allocated(device_index)
+
     # Data types
     def is_bf16_supported(self):
         return True
@@ -183,8 +211,25 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def LongTensor(self):
         return torch.xpu.LongTensor
 
-    def pin_memory(self, tensor):
-        return tensor.pin_memory(device=self.current_device_name())
+    def pin_memory(self, tensor, align_bytes=1):
+        if align_bytes == 1:
+            return tensor.pin_memory(device=self.current_device_name())
+        elif align_bytes == 0:
+            from intel_extension_for_deepspeed.op_builder.async_io import AsyncIOBuilder
+            self.aio_handle = AsyncIOBuilder().load().aio_handle(128 * 1024, 8, False, False, False)
+            aligned_t = self.aio_handle.new_cpu_locked_tensor(tensor.numel(), tensor)
+            aligned_t = aligned_t[:tensor.numel()].copy_(tensor)
+            self.aligned_tensors.append([aligned_t.data_ptr(), aligned_t[-1].data_ptr()])
+            return aligned_t
+
+    def is_pinned(self, tensor):
+        if tensor.is_pinned(device=self.current_device_name()):
+            return True
+        else:
+            for begin, end in self.aligned_tensors:
+                if begin <= tensor.data_ptr() and tensor.data_ptr() <= end:
+                    return True
+        return False
 
     def op_builder_dir(self):
         return "intel_extension_for_deepspeed.op_builder"
@@ -196,7 +241,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         else:
             return False
 
-    # create an instance of op builder and return, name specified by class_name 
+    # create an instance of op builder and return, name specified by class_name
     def create_op_builder(self, op_name):
         builder_class = self.get_op_builder(op_name)
         if builder_class != None:
@@ -205,8 +250,7 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     # return an op builder class, name specified by class_name
     def get_op_builder(self, class_name):
-        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, TransformerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder
-        from deepspeed.ops.op_builder.async_io import AsyncIOBuilder
+        from intel_extension_for_deepspeed.op_builder import CPUAdagradBuilder, CPUAdamBuilder, FusedAdamBuilder, QuantizerBuilder, UtilsBuilder, InferenceBuilder, FlashAttentionBuilder, AsyncIOBuilder
         from deepspeed.ops.op_builder.sparse_attn import SparseAttnBuilder
 
         if class_name == "AsyncIOBuilder":
@@ -221,8 +265,6 @@ class XPU_Accelerator(DeepSpeedAccelerator):
             return QuantizerBuilder
         elif class_name == "SparseAttnBuilder":
             return SparseAttnBuilder
-        elif class_name == "TransformerBuilder":
-            return TransformerBuilder
         elif class_name == "UtilsBuilder":
             return UtilsBuilder
         elif class_name == "InferenceBuilder":
@@ -238,3 +280,24 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         except ImportError:
             from intel_extension_for_pytorch.xpu.utils import DpcppBuildExtension
         return DpcppBuildExtension
+
+    def export_envs(self):
+        return []
+
+    def visible_devices_envs(self):
+        return ['ZE_AFFINITY_MASK']
+
+    def set_visible_devices_envs(self, current_env, local_accelerator_ids):
+        for env in self.visible_devices_envs():
+            current_env[env] = ",".join(map(str, local_accelerator_ids))
+
+    def get_compile_backend(self):
+        return self._compile_backend
+
+    def set_compile_backend(self, backend):
+        supported_backends = torch._dynamo.list_backends(exclude_tags=())
+        if backend in supported_backends:
+            self._compile_backend = backend
+        else:
+            raise ValueError(
+                f"{backend} not supported by {self.device_name()}. Supported Backends are {supported_backends}")

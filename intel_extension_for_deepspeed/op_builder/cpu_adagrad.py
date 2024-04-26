@@ -16,13 +16,11 @@ class CPUAdagradBuilder(SYCLOpBuilder):
 
     def sources(self):
         return [
-            sycl_kernel_path('csrc/adagrad/cpu_adagrad.dp.cpp'),
-            sycl_kernel_path('csrc/adam/custom_sycl_kernel.dp.cpp'),
+            sycl_kernel_path('csrc/adagrad/cpu_adagrad.cpp'),
+            sycl_kernel_path('csrc/common/custom_cuda_kernel.dp.cpp'),
         ]
 
     def include_paths(self):
         return [
             sycl_kernel_include('csrc/includes'),
-            sycl_kernel_include('csrc/adagrad'),
-            'csrc/includes'
         ]
