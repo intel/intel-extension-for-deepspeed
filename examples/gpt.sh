@@ -90,6 +90,7 @@ run_cmd="
     --no-gradient-accumulation-fusion \
     --distributed-backend $CCL \
     --num-workers 0 \
+    --ds_fused_adam \
     $custom_args \
     |& tee $OUTPUT_DIR/output.log
     "
