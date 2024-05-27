@@ -20,18 +20,24 @@ template <int q_bits,
           int internal_unroll,
           int threads_per_group,
           int max_threads>
-/*
-DPCT1110:46: The total declared local variable size in device function cached_quantization exceeds
-128 bytes and may cause high register pressure. Consult with your hardware vendor to find the total
-register size available and adjust the code, or use smaller sub-group size to avoid high register
-pressure.
-*/
-void cached_quantization(int8_t* __restrict__ output_data,
-                         float* __restrict__ params,
-                         const sycl::half* __restrict__ input_data,
-                         int groups,
-                         int elems_per_group)
-{
+class cached_quantization {
+private:
+  int8_t* __restrict__ output_data;
+  float* __restrict__ params;
+  const sycl::half* __restrict__ input_data;
+  int groups;
+  int elems_per_group;
+public:
+  cached_quantization(int8_t* __restrict__ output_data,
+                      float* __restrict__ params,
+                      const sycl::half* __restrict__ input_data,
+                      int groups,
+                      int elems_per_group): output_data(output_data),
+                                            params(params),
+                                            input_data(input_data),
+                                            groups(groups),
+                                            elems_per_group(elems_per_group) {}
+  void operator()(sycl::nd_item<3>) const {
     sycl::group<3> tb = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group warp = sycl::ext::oneapi::experimental::this_sub_group();
 
@@ -65,33 +71,26 @@ void cached_quantization(int8_t* __restrict__ output_data,
     quantize::
         local_array<quant_type, q_bits, UNROLL * internal_unroll, threads_per_group, max_threads>(
             local_buffer, params, output_data, elems_per_group, groups);
-}
+  }
+};
+
 
 /********* Launcher methods ***********/
 /*
 DPCT1049:47: The work-group size passed to the SYCL kernel may exceed the limit. To get the device
 limit, query info::device::max_work_group_size. Adjust the work-group size if needed.
 */
-#define LAUNCH_CACHED_QUANT_CALL(q_bits, quant_type)                                           \
- dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp64, sycl::aspect::fp16}); \
- stream->submit([&](sycl::handler& cgh) {                                                      \
-  int8_t* output_data_ct0 = output_data;                                                       \
-  float* params_ct1 = params;                                                                  \
-  const sycl::half* input_data_ct2 = input_data;                                               \
-  int groups_ct3 = groups;                                                                     \
-  int elems_per_group_ct4 = elems_per_group;                                                   \
-                                                                                               \
-  cgh.parallel_for(                                                                            \
-      sycl::nd_range<3>(grid * block, block),                                                  \
-      [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(32)]] {                      \
-       cached_quantization<q_bits,                                                             \
-                           quant_type,                                                         \
-                           unroll_factor,                                                      \
-                           internal_unroll_l,                                                  \
-                           threads_per_group,                                                  \
-                           max_threads>(                                                       \
-           output_data_ct0, params_ct1, input_data_ct2, groups_ct3, elems_per_group_ct4);      \
-      });                                                                                      \
+#define LAUNCH_CACHED_QUANT_CALL(q_bits, quant_type)                                            \
+ dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp64, sycl::aspect::fp16});  \
+ cached_quantization<q_bits,                                                                    \
+                     quant_type,                                                                \
+                     unroll_factor,                                                             \
+                     internal_unroll_l,                                                         \
+                     threads_per_group,                                                         \
+                     max_threads> fn(output_data, params, input_data, groups, elems_per_group); \ 
+ stream->submit([&](sycl::handler& cgh) {                                                       \
+  cgh.parallel_for(                                                                             \
+      sycl::nd_range<3>(grid * block, block), fn);                                              \
  });
 
 #define LAUNCH_CACHED_QUANT(                                                        \

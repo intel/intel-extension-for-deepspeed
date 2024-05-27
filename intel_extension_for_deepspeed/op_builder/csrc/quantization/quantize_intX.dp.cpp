@@ -185,13 +185,28 @@ __dpct_inline__ AlignedArray<sycl::half, N * 2> int4_to_half(const AlignedArray<
     return ret;
 }
 
-void dequantize_int4_to_half(uint8_t* data_in,
-                             sycl::half* data_out,
-                             sycl::half* scale_buffer,
-                             sycl::half* min_val_buffer,
-                             int num_group,
-                             int group_size)
-{
+class dequantize_int4_to_half {
+private:
+  uint8_t* data_in;
+  sycl::half* data_out;
+  sycl::half* scale_buffer;
+  sycl::half* min_val_buffer;
+  int num_group;
+  int group_size;
+public:
+  dequantize_int4_to_half(uint8_t* data_in,
+                          sycl::half* data_out,
+                          sycl::half* scale_buffer,
+                          sycl::half* min_val_buffer,
+                          int num_group,
+                          int group_size): data_in(data_in),
+                                           data_out(data_out),
+                                           scale_buffer(scale_buffer),
+                                           min_val_buffer(min_val_buffer),
+                                           num_group(num_group),
+                                           group_size(group_size) {}
+
+  void operator()(sycl::nd_item<3>) const {
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     using AccessType = AlignedArray<uint8_t, 4>;
     using AccessTypeOut = AlignedArray<sycl::half, 8>;
@@ -210,7 +225,9 @@ void dequantize_int4_to_half(uint8_t* data_in,
 
         reinterpret_cast<AccessTypeOut*>(data_out)[idx] = output;
     }
-}
+  }
+};
+
 
 void launch_dequantize_int4_to_half_experimental(uint8_t* data_in,
                                                  sycl::half* data_out,
@@ -225,13 +242,11 @@ void launch_dequantize_int4_to_half_experimental(uint8_t* data_in,
 
     {
         dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp16});
+        dequantize_int4_to_half fn(
+                    data_in, data_out, scale_buffer, min_val_buffer, num_group, group_size);
         stream->parallel_for(
             sycl::nd_range<3>(sycl::range<3>(1, 1, num_block) * sycl::range<3>(1, 1, 256),
-                              sycl::range<3>(1, 1, 256)),
-            [=](sycl::nd_item<3> item_ct1) {
-                dequantize_int4_to_half(
-                    data_in, data_out, scale_buffer, min_val_buffer, num_group, group_size);
-            });
+                              sycl::range<3>(1, 1, 256)), fn);
     }
 }
 
@@ -246,13 +261,27 @@ __dpct_inline__ AlignedArray<sycl::half, N> int8_to_half(const AlignedArray<uint
     return ret;
 }
 
-void dequantize_int8_to_half(uint8_t* data_in,
-                             sycl::half* data_out,
-                             sycl::half* scale_buffer,
-                             sycl::half* min_val_buffer,
-                             int num_group,
-                             int group_size)
-{
+class dequantize_int8_to_half {
+private:
+  uint8_t* data_in;
+  sycl::half* data_out;
+  sycl::half* scale_buffer;
+  sycl::half* min_val_buffer;
+  int num_group;
+  int group_size;
+public:
+  dequantize_int8_to_half(uint8_t* data_in,
+                          sycl::half* data_out,
+                          sycl::half* scale_buffer,
+                          sycl::half* min_val_buffer,
+                          int num_group,
+                          int group_size): data_in(data_in),
+                                           data_out(data_out),
+                                           scale_buffer(scale_buffer),
+                                           min_val_buffer(min_val_buffer),
+                                           num_group(num_group),
+                                           group_size(group_size) {}
+  void operator()(sycl::nd_item<3>) const {
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     using AccessType = AlignedArray<uint8_t, 8>;
     using AccessTypeOut = AlignedArray<sycl::half, 8>;
@@ -271,7 +300,9 @@ void dequantize_int8_to_half(uint8_t* data_in,
 
         reinterpret_cast<AccessTypeOut*>(data_out)[idx] = output;
     }
-}
+  }
+};
+
 
 void launch_dequantize_int8_to_half_experimental(uint8_t* data_in,
                                                  sycl::half* data_out,
@@ -286,12 +317,10 @@ void launch_dequantize_int8_to_half_experimental(uint8_t* data_in,
 
     {
         dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp16});
+        dequantize_int8_to_half fn(
+                    data_in, data_out, scale_buffer, min_val_buffer, num_group, group_size);
         stream->parallel_for(
             sycl::nd_range<3>(sycl::range<3>(1, 1, num_block) * sycl::range<3>(1, 1, 256),
-                              sycl::range<3>(1, 1, 256)),
-            [=](sycl::nd_item<3> item_ct1) {
-                dequantize_int8_to_half(
-                    data_in, data_out, scale_buffer, min_val_buffer, num_group, group_size);
-            });
+                              sycl::range<3>(1, 1, 256)), fn);
     }
 }

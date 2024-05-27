@@ -9,15 +9,30 @@
 #include "memory_access_utils.h"
 
 template <typename T, int numBits, dequantize::Type qType, int unroll, int threads>
-void dequantize_kernel(T* __restrict__ dequant_data,
-                                  const int8_t* __restrict__ q_data,
-                                  const float* __restrict__ q_params,
-                                  int elems_per_group,
-                                  int total_elems)
-{
-    dequantize::to_global<T, numBits, qType, unroll, threads>(
-        dequant_data, q_data, q_params, elems_per_group, total_elems);
-}
+class dequantize_kernel {
+private:
+  T* __restrict__ dequant_data;
+  const int8_t* __restrict__ q_data;
+  const float* __restrict__ q_params;
+  int elems_per_group;
+  int total_elems;
+
+public:
+  dequantize_kernel(T* __restrict__ dequant_data, 
+                    const int8_t* __restrict__ q_data, 
+                    const float* __restrict__ q_params, 
+                    int elems_per_group, 
+                    int total_elems): dequant_data(dequant_data), 
+                                      q_data(q_data), 
+                                      q_params(q_params), 
+                                      elems_per_group(elems_per_group), 
+                                      total_elems(total_elems) {}
+  void operator()(sycl::nd_item<3>) const
+  {
+      dequantize::to_global<T, numBits, qType, unroll, threads>(
+          dequant_data, q_data, q_params, elems_per_group, total_elems);
+  }
+};
 
 /*
 DPCT1049:47: The work-group size passed to the SYCL kernel may exceed the limit. To get the device
@@ -26,19 +41,12 @@ limit, query info::device::max_work_group_size. Adjust the work-group size if ne
 #define LAUNCH_DEQUANT_KERNEL(num_bits, q_type)                                                    \
   {                                                                                                \
     dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp64, sycl::aspect::fp16});  \
+    dequantize_kernel<T, num_bits, q_type, unroll, threads>                                        \
+                                fn(dequant_data, q_data, q_params, elems_per_group, total_elems);  \
     stream->submit([&](sycl::handler& cgh) {                                                       \
-      T* dequant_data_ct0 = dequant_data;                                                          \
-      const int8_t* q_data_ct1 = q_data;                                                           \
-      const float* q_params_ct2 = q_params;                                                        \
-      auto elems_per_group_ct3 = elems_per_group;                                                  \
-      auto total_elems_ct4 = total_elems;                                                          \
-                                                                                                   \
       cgh.parallel_for(                                                                            \
           sycl::nd_range<3>(grid * block, block),                                                  \
-          [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(32)]] {                      \
-            dequantize_kernel<T, num_bits, q_type, unroll, threads>(                               \
-                dequant_data_ct0, q_data_ct1, q_params_ct2, elems_per_group_ct3, total_elems_ct4); \
-          });                                                                                      \
+          fn);                                                                                     \
     });                                                                                            \
   }
 
