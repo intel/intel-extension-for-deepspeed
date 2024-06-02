@@ -1,3 +1,18 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +21,7 @@
 #pragma once
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
+#include <dpct/dpct.h>
 #include "conversion_utils.h"
 #include "ds_kernel_utils.h"
 #include "memory_access_utils.h"
@@ -178,23 +193,13 @@ DS_D_INLINE sycl::half element<ROpType::Add>(const sycl::half lhs, const sycl::h
 template <>
 DS_D_INLINE sycl::half element<ROpType::Max>(const sycl::half lhs, const sycl::half rhs)
 {
-#if DPCT_COMPATIBILITY_TEMP >= 800
-    // Intrinsic limited to Ampere + newer
-    return __hmax(lhs, rhs);
-#else
     return (lhs > rhs) ? lhs : rhs;
-#endif
 }
 
 template <>
 DS_D_INLINE sycl::half element<ROpType::Min>(const sycl::half lhs, const sycl::half rhs)
 {
-#if DPCT_COMPATIBILITY_TEMP >= 800
-    // Intrinsic limited to Ampere + newer
-    return __hmin(lhs, rhs);
-#else
     return (lhs < rhs) ? lhs : rhs;
-#endif
 }
 
 /* sycl::half2 element reduce implementation */
@@ -207,27 +212,19 @@ DS_D_INLINE sycl::half2 element<ROpType::Add>(const sycl::half2 lhs, const sycl:
 template <>
 DS_D_INLINE sycl::half2 element<ROpType::Max>(const sycl::half2 lhs, const sycl::half2 rhs)
 {
-#if DPCT_COMPATIBILITY_TEMP >= 800
-    return __hmax2(lhs, rhs);
-#else
     sycl::half2 ret_val;
     ret_val.x() = (lhs.x() > rhs.x()) ? lhs.x() : rhs.x();
     ret_val.y() = (lhs.y() > rhs.y()) ? lhs.y() : rhs.y();
     return ret_val;
-#endif
 }
 
 template <>
 DS_D_INLINE sycl::half2 element<ROpType::Min>(const sycl::half2 lhs, const sycl::half2 rhs)
 {
-#if DPCT_COMPATIBILITY_TEMP >= 800
-    return __hmin2(lhs, rhs);
-#else
     sycl::half2 ret_val;
     ret_val.x() = (lhs.x() < rhs.x()) ? lhs.x() : rhs.x();
     ret_val.y() = (lhs.y() < rhs.y()) ? lhs.y() : rhs.y();
     return ret_val;
-#endif
 }
 
 template <>
@@ -310,55 +307,39 @@ DS_D_INLINE float init<ROpType::Max>()
 template <>
 DS_D_INLINE sycl::half init<ROpType::Add>()
 {
-    constexpr uint16_t zero = {0x0000};
-    return sycl::half(zero);
+    return sycl::half(0.0);
 }
 
 template <>
 DS_D_INLINE sycl::half init<ROpType::Min>()
 {
-    constexpr uint16_t inf = {0x7C00};
+    constexpr sycl::half inf = std::numeric_limits<sycl::half>::infinity();
     return sycl::half(inf);
 }
 
 template <>
 DS_D_INLINE sycl::half init<ROpType::Max>()
 {
-    constexpr uint16_t neg_inf = {0xFC00};
+    constexpr sycl::half neg_inf = -std::numeric_limits<sycl::half>::infinity();
     return sycl::half(neg_inf);
 }
 
 template <>
 DS_D_INLINE sycl::half2 init<ROpType::Add>()
 {
-#ifdef __HIP_PLATFORM_AMD__
-    return sycl::half2{_Float16_2{0x0000, 0x0000}};
-#else
-    constexpr sycl::half2 zero = {0x0000, 0x0000};
-    return sycl::half2(zero);
-#endif
+    return {0.0, 0.0};
 }
 
 template <>
 DS_D_INLINE sycl::half2 init<ROpType::Min>()
 {
-#ifdef __HIP_PLATFORM_AMD__
-    return sycl::half2{_Float16_2{0x7C00, 0x7C00}};
-#else
-    constexpr sycl::half2 inf = {0x7C00, 0x7C00};
-    return sycl::half2(inf);
-#endif
+    return {std::numeric_limits<sycl::half>::infinity(), std::numeric_limits<sycl::half>::infinity()};
 }
 
 template <>
 DS_D_INLINE sycl::half2 init<ROpType::Max>()
 {
-#ifdef __HIP_PLATFORM_AMD__
-    return sycl::half2{_Float16_2{0xFC00, 0xFC00}};
-#else
-    constexpr sycl::half2 neg_inf = {0xFC00, 0xFC00};
-    return sycl::half2(neg_inf);
-#endif
+    return {-std::numeric_limits<sycl::half>::infinity(), -std::numeric_limits<sycl::half>::infinity()};
 }
 
 template <>
@@ -478,8 +459,10 @@ huge overkill that harms readability) that would be wonderful.
 template <typename T, ROpType Op, int reduce_width = hw_warp_size>
 DS_D_INLINE void _warp(sycl::sub_group& warp, T* data)
 {
+    auto tb = sycl::ext::oneapi::experimental::this_group<3>();
+    auto reduce_width_ = tb.get_local_range(2) < reduce_width ? tb.get_local_range(2) : reduce_width;
 #pragma unroll
-    for (int i = 1; i < reduce_width; i *= 2) {
+    for (int i = 1; i < reduce_width_; i *= 2) {
         data[0] = element<Op>(data[0],
                               sycl::permute_group_by_xor(
                                   sycl::ext::oneapi::experimental::this_sub_group(), data[0], i));
@@ -489,8 +472,10 @@ DS_D_INLINE void _warp(sycl::sub_group& warp, T* data)
 template <typename T, ROpType Op1, ROpType Op2, int reduce_width = hw_warp_size>
 DS_D_INLINE void _warp(sycl::sub_group& warp, T* data)
 {
+    auto tb = sycl::ext::oneapi::experimental::this_group<3>();
+    auto reduce_width_ = tb.get_local_range(2) < reduce_width ? tb.get_local_range(2) : reduce_width;
 #pragma unroll
-    for (int i = 1; i < reduce_width; i *= 2) {
+    for (int i = 1; i < reduce_width_; i *= 2) {
         data[0] = element<Op1>(data[0],
                                sycl::permute_group_by_xor(
                                    sycl::ext::oneapi::experimental::this_sub_group(), data[0], i));
@@ -552,16 +537,11 @@ DS_D_INLINE void _block(sycl::group<3>& tb, sycl::sub_group& warp_arg, T* data)
     auto& reduce_buffer = *sycl::ext::oneapi::group_local_memory_for_overwrite<T[max_warps * elems]>(
         sycl::ext::oneapi::experimental::this_group<3>());
 
-#ifdef __HIP_PLATFORM_AMD__
-    const int total_threads = blockDim.x * blockDim.y * blockDim.z;
-    const int running_warps = total_threads / hw_warp_size;
-#else
     /*
     DPCT1007:7: Migration of cooperative_groups::thread_block_tile::meta_group_size is not
     supported.
     */
     const int running_warps = warp_arg.get_group_range().size();
-#endif
 
     // Always perform warp-scope reduction
     _warp<T, Ops...>(warp_arg, data);

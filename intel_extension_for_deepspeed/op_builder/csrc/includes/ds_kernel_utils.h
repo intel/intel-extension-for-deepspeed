@@ -1,3 +1,18 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -11,7 +26,7 @@ used throughout the codebase.
 #pragma once
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
+#include <dpct/dpct.h>
 
 #ifdef BF16_AVAILABLE
 #endif
@@ -19,29 +34,13 @@ used throughout the codebase.
 #define DS_HD_INLINE __dpct_inline__
 #define DS_D_INLINE __dpct_inline__
 
-#ifdef __HIP_PLATFORM_AMD__
-
-// constexpr variant of warpSize for templating
-constexpr int hw_warp_size = 64;
-#define HALF_PRECISION_AVAILABLE = 1
-#include <hip/hip_cooperative_groups.h>
-#include <hip/hip_fp16.h>
-
-#else  // !__HIP_PLATFORM_AMD__
 
 // constexpr variant of warpSize for templating
 constexpr int hw_warp_size = 32;
 
-#if DPCT_COMPATIBILITY_TEMP >= 530
 #define HALF_PRECISION_AVAILABLE = 1
 // #define PTX_AVAILABLE
-#endif  // __CUDA_ARCH__ >= 530
 
-#if DPCT_COMPATIBILITY_TEMP >= 800
-#define ASYNC_COPY_AVAILABLE
-#endif  // __CUDA_ARCH__ >= 800
-
-#endif  //__HIP_PLATFORM_AMD__
 
 inline int next_pow2(const int val)
 {
