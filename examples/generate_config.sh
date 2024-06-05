@@ -96,7 +96,25 @@ zero="\
         \"pin_memory\": true
       }
     },"
-elif [ $ZERO_STAGE == 2 ] || [ $ZERO_STAGE == 1 ]; then
+elif [ $ZERO_STAGE == 2 ]; then
+zero="\
+    \"zero_optimization\": {
+      \"stage\": $ZERO_STAGE,
+      \"allgather_partitions\": true,
+      \"allgather_bucket_size\": \"auto\",
+      \"overlap_comm\": true,
+      \"reduce_scatter\": false,
+      \"reduce_bucket_size\": 3e7,
+      \"contiguous_gradients\": true,
+      \"offload_optimizer\": {
+        \"device\": \"none\",
+        \"buffer_count\": 4,
+        \"pipeline_read\": false,
+        \"pipeline_write\": false,
+        \"pin_memory\": true
+      }
+    },"
+elif [ $ZERO_STAGE == 1 ]; then
 zero="\
     \"zero_optimization\": {
       \"stage\": $ZERO_STAGE
