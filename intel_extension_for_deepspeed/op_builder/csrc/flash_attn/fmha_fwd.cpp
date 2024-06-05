@@ -202,14 +202,15 @@ class fmha_forward_t {
       end_y = end_y > boundary_y ? boundary_y : end_y;
 
       int32_t start_acc = head_id * args.uH;
+      uint32_t end_acc = start_acc + args.uH;
 
       mem_desc_Qi.init(
           args.Q_ptr,
-          {args.uH * args.uN, end_y, args.uH * args.uN},
+          {end_acc, end_y, args.uH * args.uN},
           {start_acc, start_y});
       mem_desc_Oi.init(
           args.O_ptr,
-          {args.uH * args.uN, end_y, args.uH * args.uN},
+          {end_acc, end_y, args.uH * args.uN},
           {start_acc, start_y});
 
       int32_t start_x_ml = ei.get_group(1) * kBr + sg_idy * kSgBr;
@@ -239,14 +240,15 @@ class fmha_forward_t {
       end_x = end_x > boundary_x ? boundary_x : end_x;
 
       int32_t start_acc = head_id * args.uH;
+      uint32_t end_acc = start_acc + args.uH;
 
       mem_desc_Kj_T.init(
           args.K_ptr,
-          {end_x, args.uH * args.uN, args.uH * args.uN},
+          {end_x, end_acc, args.uH * args.uN},
           {start_x, start_acc});
       mem_desc_Vj.init(
           args.V_ptr,
-          {args.uH * args.uN, end_x, args.uH * args.uN},
+          {end_acc, end_x, args.uH * args.uN},
           {start_acc, start_x});
 
       if constexpr (kIsDropout) {
@@ -444,51 +446,6 @@ class fmha_forward_t {
     epilogue(ctx.g, matAccOi, ctx.mem_desc_Oi);
   }
 
-  // ================== // permute_store_Oi // ==================== //
-
-  /// @brief permuted store Oi to global memory. [B,N,F,H]
-  inline void permute_store_Oi(
-      xetla_exec_item<3>& ei,
-      matAccOi_t& matAccOi,
-      arguments_t& args) {
-    uint32_t b = ei.get_group(0) / args.uN;
-    uint32_t n = ei.get_group(0) % args.uN;
-    uint32_t f = ctx.sg_idy * kSgBr + ei.get_group(1) * kBr;
-    uint32_t h = ctx.sg_idx * kSgHm;
-
-    // Because Hm is greater than uH
-    if (h >= args.uH)
-      return;
-
-    xetla_tdescriptor transpose_tdecs;
-    xetla_vector<scalar_t, kSgHm> v_out;
-
-    uint32_t height = args.uB * args.uN * args.uF;
-    uint32_t offset_height = b * args.uN * args.uF + f * args.uN + n;
-
-    xetla_fill_tdesc<scalar_t, kSgHm, 1, 1>(
-        transpose_tdecs.xetla_format<uint32_t>(),
-        args.O_ptr,
-        args.uH,
-        height,
-        args.uH,
-        h,
-        offset_height);
-
-    for (uint32_t i = 0; i < kSgBr && (f + i < args.uF); ++i) {
-      // load data from matAccOi
-      auto v_acc = matAccOi.reg.xetla_select<kSgHm, 1>(i * kSgHm);
-      v_out = xetla_cvt<scalar_t, accum_t, kSgHm>(v_acc);
-
-      xetla_tstore_global<
-          scalar_t,
-          kSgHm,
-          cache_hint::write_back,
-          cache_hint::write_back>(transpose_tdecs, v_out);
-      xetla_update_tdesc_offsety(
-          transpose_tdecs.xetla_format<uint32_t>(), args.uN);
-    }
-  }
   // ====================== // preload_Qi // ====================== //
 
   /// @brief preload_Qi is used to load Qi from global to local memory.
