@@ -68,8 +68,8 @@ class XPU_Accelerator(DeepSpeedAccelerator):
     def manual_seed_all(self, seed):
         return torch.xpu.manual_seed_all(seed)
 
-    def initial_seed(self, seed):
-        return torch.xpu.initial_seed(seed)
+    def initial_seed(self):
+        return torch.xpu.initial_seed()
 
     def default_generator(self, device_index):
         return torch.xpu.default_generators[device_index]
@@ -150,7 +150,10 @@ class XPU_Accelerator(DeepSpeedAccelerator):
         return
 
     def lazy_call(self, callback):
-        return torch.xpu.lazy_init._lazy_call(callback)
+        if hasattr(torch.xpu, "_lazy_call"):
+            return torch.xpu._lazy_call(callback)
+        else:
+            return torch.xpu.lazy_init._lazy_call(callback)
 
     def communication_backend_name(self):
         return self._communication_backend_name
@@ -186,31 +189,31 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     @property
     def BFloat16Tensor(self):
-        return functools.partial(torch.tensor, dtype=torch.bfloat16, device='xpu')
+        return functools.partial(torch.tensor, dtype=torch.bfloat16, device=self._name)
 
     @property
     def ByteTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.uint8, device='xpu')
+        return functools.partial(torch.tensor, dtype=torch.uint8, device=self._name)
 
     @property
     def DoubleTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.double, device='xpu')
+        return functools.partial(torch.tensor, dtype=torch.double, device=self._name)
 
     @property
     def FloatTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.float, device='xpu')
+        return functools.partial(torch.tensor, dtype=torch.float, device=self._name)
 
     @property
     def HalfTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.half, device='xpu')
+        return functools.partial(torch.tensor, dtype=torch.half, device=self._name)
 
     @property
     def IntTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.int, device='xpu')
+        return functools.partial(torch.tensor, dtype=torch.int, device=self._name)
 
     @property
     def LongTensor(self):
-        return functools.partial(torch.tensor, dtype=torch.long, device='xpu')
+        return functools.partial(torch.tensor, dtype=torch.long, device=self._name)
 
     def pin_memory(self, tensor, align_bytes=1):
         if align_bytes == 1:
