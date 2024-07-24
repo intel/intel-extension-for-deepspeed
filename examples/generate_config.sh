@@ -85,7 +85,7 @@ zero="\
       \"stage3_param_persistence_threshold\": 1e5,
       \"stage3_prefetch_bucket_size\": 5e7,
       \"contiguous_gradients\": true,
-      \"overlap_comm\": false,
+      \"overlap_comm\": true,
       \"reduce_bucket_size\": 90000000,
       \"sub_group_size\": 1e9,
       \"offload_optimizer\": {
