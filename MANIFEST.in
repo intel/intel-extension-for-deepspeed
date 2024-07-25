@@ -1,2 +1,2 @@
-recursive-include intel_extension_for_deepspeed/op_builder/csrc *.cpp *.hpp
+recursive-include intel_extension_for_deepspeed/op_builder/csrc *.cpp *.hpp *.h
 recursive-include intel_extension_for_deepspeed *.py
