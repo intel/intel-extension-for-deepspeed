@@ -1,10 +1,25 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
 // DeepSpeed Team
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
+#include <dpct/dpct.h>
 #include <cstdio>
 #include "dequantization_utils.h"
 #include "ds_kernel_utils.h"
@@ -20,22 +35,38 @@ to leverage some parallel reductions here to improve performance.
 */
 
 template <int numBits, int numTensors, int totalChunks, quantize::Type quantType>
-/*
-DPCT1110:46: The total declared local variable size in device function dequant_reduce exceeds 128
-bytes and may cause high register pressure. Consult with your hardware vendor to find the total
-register size available and adjust the code, or use smaller sub-group size to avoid high register
-pressure.
-*/
-void dequant_reduce(int8_t* reduced_data,
-                    float* reduced_scales,
-                    const int8_t* input_data,
-                    const float* input_scales,
-                    int elems_per_out_group,
-                    int elems_per_in_tensor,
-                    int groups_per_in_tensor,
-                    int elems_per_in_group,
-                    int num_tensors)
-{
+class dequant_reduce {
+private:
+  int8_t* reduced_data;
+  float* reduced_scales;
+  const int8_t* input_data;
+  const float* input_scales;
+  int elems_per_out_group;
+  int elems_per_in_tensor;
+  int groups_per_in_tensor;
+  int elems_per_in_group;
+  int num_tensors;
+public:
+  dequant_reduce(int8_t* reduced_data,
+                 float* reduced_scales,
+                 const int8_t* input_data,
+                 const float* input_scales,
+                 int elems_per_out_group,
+                 int elems_per_in_tensor,
+                 int groups_per_in_tensor,
+                 int elems_per_in_group,
+                 int num_tensors): reduced_data(reduced_data),
+                                   reduced_scales(reduced_scales),
+                                   input_data(input_data),
+                                   input_scales(input_scales),
+                                   elems_per_out_group(elems_per_out_group),
+                                   elems_per_in_tensor(elems_per_in_tensor),
+                                   groups_per_in_tensor(groups_per_in_tensor),
+                                   elems_per_in_group(elems_per_in_group),
+                                   num_tensors(num_tensors) {}
+
+
+  void operator()(sycl::nd_item<3>) const {
     sycl::group<3> tb = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group warp = sycl::ext::oneapi::experimental::this_sub_group();
 
@@ -135,7 +166,10 @@ void dequant_reduce(int8_t* reduced_data,
             mem_access::store_global<mem_granularity>(reduced_data + iter_offset, local_output);
         }
     }
-}
+  }
+                                                                                                   
+};
+
 
 template <int Power>
 int32_t pow2_round(int32_t raw_value)
@@ -150,30 +184,17 @@ limit, query info::device::max_work_group_size. Adjust the work-group size if ne
 #define LAUNCH_DEQUANT_REDUCE(num_chunks)                                                       \
  {                                                                                              \
   dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp64, sycl::aspect::fp16}); \
+  dequant_reduce<numBits, numTensors, num_chunks, quantType> fn(reduced_data,                   \
+                                                                reduced_scales,                 \
+                                                                input_data,                     \
+                                                                input_scales,                   \
+                                                                elems_per_out_group,            \
+                                                                elems_per_in_tensor,            \
+                                                                groups_per_in_tensor,           \
+                                                                elems_per_in_group,             \
+                                                                num_tensors);                   \
   stream->submit([&](sycl::handler& cgh) {                                                      \
-   int8_t* reduced_data_ct0 = reduced_data;                                                     \
-   float* reduced_scales_ct1 = reduced_scales;                                                  \
-   const int8_t* input_data_ct2 = input_data;                                                   \
-   const float* input_scales_ct3 = input_scales;                                                \
-   auto elems_per_out_group_ct4 = elems_per_out_group;                                          \
-   auto elems_per_in_tensor_ct5 = elems_per_in_tensor;                                          \
-   auto groups_per_in_tensor_ct6 = groups_per_in_tensor;                                        \
-   auto elems_per_in_group_ct7 = elems_per_in_group;                                            \
-   auto num_tensors_ct8 = num_tensors;                                                          \
-                                                                                                \
-   cgh.parallel_for(sycl::nd_range<3>(grid * block, block),                                     \
-                    [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(32)]] {         \
-                     dequant_reduce<numBits, numTensors, num_chunks, quantType>(                \
-                         reduced_data_ct0,                                                      \
-                         reduced_scales_ct1,                                                    \
-                         input_data_ct2,                                                        \
-                         input_scales_ct3,                                                      \
-                         elems_per_out_group_ct4,                                               \
-                         elems_per_in_tensor_ct5,                                               \
-                         groups_per_in_tensor_ct6,                                              \
-                         elems_per_in_group_ct7,                                                \
-                         num_tensors_ct8);                                                      \
-                    });                                                                         \
+   cgh.parallel_for(sycl::nd_range<3>(grid * block, block), fn);                                \
   });                                                                                           \
  }
 
