@@ -104,7 +104,7 @@ zero="\
       \"allgather_bucket_size\": \"auto\",
       \"overlap_comm\": true,
       \"reduce_scatter\": false,
-      \"reduce_bucket_size\": 3e7,
+      \"reduce_bucket_size\": 90000000,
       \"contiguous_gradients\": true,
       \"offload_optimizer\": {
         \"device\": \"none\",
