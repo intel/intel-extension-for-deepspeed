@@ -77,6 +77,10 @@ class XPU_Accelerator(DeepSpeedAccelerator):
 
     def default_generator(self, device_index):
         return torch.xpu.default_generators[device_index]
+    
+    #WA for xpu Generator in torch api    
+    def xpu_generator(self, device_index):
+        return torch.xpu.Generator(device=f'xpu:{device_index}')
 
     # Streams/Events
     @property
