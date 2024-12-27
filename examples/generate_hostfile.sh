@@ -19,8 +19,9 @@ echo "!!!please use generate_hostfile.sh before training"
 usage()
 {
   echo "Example Usage:
-            for 1 node: bash $0 x10001
-            for 4 nodes: bash generate_hostfile.sh x10001 x10002 x10003 x10004"
+            for 1 node: bash $0 x1001c2s1b0n0.hostmgmt2001.cm.jf.intel.com
+            for 4 nodes: bash generate_hostfile.sh x1001c2s1b0n0.hostmgmt2001.cm.jf.intel.com x1001c2s2b0n0.hostmgmt2001.cm.jf.intel.com x1001c2s3b0n0.hostmgmt2001.cm.jf.intel.com x1001c2s4b0n0.hostmgmt2001.cm.jf.intel.com
+            node name can get from PBS_NODEFILE"
   exit 2
 }
 
