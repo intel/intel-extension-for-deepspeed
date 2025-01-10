@@ -29,4 +29,4 @@ class QuantizerBuilder(SYCLOpBuilder):
         ]
 
     def include_paths(self):
-        return [sycl_kernel_include('csrc/includes')]
+        return [sycl_kernel_include('csrc/includes'), sycl_kernel_include('csrc/includes/dpct')]
