@@ -117,7 +117,8 @@ zero="\
 elif [ $ZERO_STAGE == 1 ]; then
 zero="\
     \"zero_optimization\": {
-      \"stage\": $ZERO_STAGE
+      \"stage\": $ZERO_STAGE,
+      \"overlap_comm\": true
     },"
   if [ $ZERO_STAGE == 1 ]; then
     if [ $PP > 1 ]; then
