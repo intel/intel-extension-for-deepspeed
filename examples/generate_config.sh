@@ -119,19 +119,6 @@ zero="\
     \"zero_optimization\": {
       \"stage\": $ZERO_STAGE
     },"
-  if [ $ZERO_STAGE == 1 ]; then
-    if [ $PP > 1 ]; then
-    extra="\
-        \"comms_logger\": {
-          \"enabled\": true,
-          \"verbose\": false,
-          \"prof_all\": true,
-          \"debug\": false
-        },"
-    else
-      echo 'please add the config for zero_stage 1 without pipeline-parallelism'
-    fi
-  fi
 else
   echo 'Please add the correct config set!!!'
 fi
