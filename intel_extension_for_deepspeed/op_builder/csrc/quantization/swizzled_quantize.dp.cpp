@@ -1,10 +1,25 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
 // DeepSpeed Team
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
+#include <dpct/dpct.h>
 #include "memory_access_utils.h"
 #include "quantization_utils.h"
 #include "reduction_utils.h"
@@ -20,19 +35,27 @@ constexpr int h_per_step = step_granularity * quantize::h_per_load;
 }  // namespace swiz_quant
 
 template <int numBits, int totalChunks, int threads, quantize::Type quantType>
-/*
-DPCT1110:46: The total declared local variable size in device function swizzled_quant_kernel exceeds
-128 bytes and may cause high register pressure. Consult with your hardware vendor to find the total
-register size available and adjust the code, or use smaller sub-group size to avoid high register
-pressure.
-*/
-void swizzled_quant_kernel(int8_t* quantized_data,
-                           float* quantized_scales,
-                           const sycl::half* uncompressed_data,
-                           int elems_per_group,
-                           int nodes,
-                           int devices_per_node)
-{
+class swizzled_quant_kernel {
+private:
+  int8_t* quantized_data;
+  float* quantized_scales;
+  const sycl::half* uncompressed_data;
+  int elems_per_group;
+  int nodes;
+  int devices_per_node;
+public:
+  swizzled_quant_kernel(int8_t* quantized_data,
+                        float* quantized_scales,
+                        const sycl::half* uncompressed_data,
+                        int elems_per_group,
+                        int nodes,
+                        int devices_per_node):quantized_data(quantized_data),
+                                              quantized_scales(quantized_scales),
+                                              uncompressed_data(uncompressed_data),
+                                              elems_per_group(elems_per_group),
+                                              nodes(nodes),
+                                              devices_per_node(devices_per_node) {}
+  void operator()(sycl::nd_item<3>) const {
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     sycl::group<3> tb = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group warp = sycl::ext::oneapi::experimental::this_sub_group();
@@ -92,7 +115,8 @@ void swizzled_quant_kernel(int8_t* quantized_data,
             mem_access::store_global<num_int8_out>(out_base + i * out_stride, local_output);
         }
     }
-}
+  }
+};
 
 /*
 DPCT1049:47: The work-group size passed to the SYCL kernel may exceed the limit. To get the device
@@ -101,24 +125,16 @@ limit, query info::device::max_work_group_size. Adjust the work-group size if ne
 #define LAUNCH_SWIZZLE_QUANT(total_chunks, threads)                                               \
   {                                                                                               \
     dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp64, sycl::aspect::fp16}); \
+    swizzled_quant_kernel<numBits, total_chunks, threads, qType> fn(                              \
+                                                                    q_data,                       \
+                                                                    q_scales,                     \
+                                                                    input_data,                   \
+                                                                    elems_per_group,              \
+                                                                    nodes,                        \
+                                                                    devices_per_node);            \
     stream->submit([&](sycl::handler& cgh) {                                                      \
-      int8_t* q_data_ct0 = q_data;                                                                \
-      float* q_scales_ct1 = q_scales;                                                             \
-      const sycl::half* input_data_ct2 = input_data;                                              \
-      auto elems_per_group_ct3 = elems_per_group;                                                 \
-      auto nodes_ct4 = nodes;                                                                     \
-      auto devices_per_node_ct5 = devices_per_node;                                               \
-                                                                                                  \
       cgh.parallel_for(sycl::nd_range<3>(grid * block, block),                                    \
-                       [=](sycl::nd_item<3> item_ct1) [[intel::reqd_sub_group_size(32)]] {        \
-                         swizzled_quant_kernel<numBits, total_chunks, threads, qType>(            \
-                             q_data_ct0,                                                          \
-                             q_scales_ct1,                                                        \
-                             input_data_ct2,                                                      \
-                             elems_per_group_ct3,                                                 \
-                             nodes_ct4,                                                           \
-                             devices_per_node_ct5);                                               \
-                       });                                                                        \
+                       fn);                                                                       \
     });                                                                                           \
   }
 

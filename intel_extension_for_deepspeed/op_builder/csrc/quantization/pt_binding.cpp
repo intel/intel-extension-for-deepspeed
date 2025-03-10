@@ -1,11 +1,26 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
 // DeepSpeed Team
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
-/* #include <ATen/cuda/CUDAContext.h> */
+#include <dpct/dpct.h>
+/* #include <ATen/sycl/SYCLContext.h> */
 #include <torch/extension.h>
 #include <cassert>
 #include <vector>
@@ -23,7 +38,7 @@ at::Tensor ds_quantize(at::Tensor& vals, int groups, int bits)
 
     if ((((size / groups) - 1) / 4096 + 1) <= 256) {
         launch_fake_quantize_kernel(
-            (T*)vals.data_ptr(), size, groups, bits, at::cuda::getCurrentCUDAStream());
+            (T*)vals.data_ptr(), size, groups, bits, at::sycl::getCurrentSYCLStream());
     }
     return vals;
 }
@@ -37,7 +52,7 @@ at::Tensor ds_sr_quantize(at::Tensor& vals, int groups, int bits)
 
     if (((size / groups) / 4 / 1024) <= 256) {
         launch_sr_fake_quantize_kernel(
-            (T*)vals.data_ptr(), size, groups, bits, at::cuda::getCurrentCUDAStream());
+            (T*)vals.data_ptr(), size, groups, bits, at::sycl::getCurrentSYCLStream());
     }
     return vals;
 }
@@ -51,7 +66,7 @@ at::Tensor ds_quantize_asym(at::Tensor& vals, int groups, int bits)
 
     if ((((size / groups) - 1) / 4096 + 1) <= 256) {
         launch_fake_quantize_kernel_asym(
-            (T*)vals.data_ptr(), size, groups, bits, at::cuda::getCurrentCUDAStream());
+            (T*)vals.data_ptr(), size, groups, bits, at::sycl::getCurrentSYCLStream());
     }
     return vals;
 }
@@ -65,7 +80,7 @@ at::Tensor ds_sr_quantize_asym(at::Tensor& vals, int groups, int bits)
 
     if (((size / groups) / 4 / 1024) <= 256) {
         launch_sr_fake_quantize_kernel_asym(
-            (T*)vals.data_ptr(), size, groups, bits, at::cuda::getCurrentCUDAStream());
+            (T*)vals.data_ptr(), size, groups, bits, at::sycl::getCurrentSYCLStream());
     }
     return vals;
 }
@@ -103,7 +118,7 @@ std::vector<at::Tensor> quantize_kernel(at::Tensor& input_vals,
                  elems_per_group,
                  numBits,
                  quantType,
-                 at::cuda::getCurrentCUDAStream());
+                 at::sycl::getCurrentSYCLStream());
 
     return {output, params};
 }
@@ -136,7 +151,7 @@ at::Tensor dequantize(at::Tensor& quantized_data,
                              num_bits,
                              elems_per_group,
                              total_elems,
-                             at::cuda::getCurrentCUDAStream());
+                             at::sycl::getCurrentSYCLStream());
 
     return output;
 }
@@ -156,7 +171,7 @@ at::Tensor dequantize_int4_to_half_experimental(at::Tensor& data_in,
                                                 (sycl::half*)min_val_buffer.data_ptr(),
                                                 num_group,
                                                 group_size,
-                                                at::cuda::getCurrentCUDAStream());
+                                                at::sycl::getCurrentSYCLStream());
 
     return output;
 }
@@ -176,7 +191,7 @@ at::Tensor dequantize_int8_to_half_experimental(at::Tensor& data_in,
                                                 (sycl::half*)min_val_buffer.data_ptr(),
                                                 num_group,
                                                 group_size,
-                                                at::cuda::getCurrentCUDAStream());
+                                                at::sycl::getCurrentSYCLStream());
 
     return output;
 }
@@ -219,7 +234,7 @@ std::vector<at::Tensor> ds_swizzle_quant(at::Tensor& input_vals,
                           pipeline_size,
                           nodes,
                           devices_per_node,
-                          at::cuda::getCurrentCUDAStream());
+                          at::sycl::getCurrentSYCLStream());
 
     return {output, scales};
 }
@@ -266,27 +281,27 @@ std::vector<at::Tensor> quantized_reduction(at::Tensor& input_vals,
                           elems_per_in_tensor,
                           in_groups / devices_per_node,
                           elems_per_in_group,
-                          at::cuda::getCurrentCUDAStream());
+                          at::sycl::getCurrentSYCLStream());
     return {output, scales};
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("ds_quantize_fp32", &ds_quantize<float>, "DeepSpeed Quantize with fp32 (CUDA)");
-    m.def("ds_quantize_fp16", &ds_quantize<sycl::half>, "DeepSpeed Quantize with fp16 (CUDA)");
-    m.def("ds_sr_quantize_fp32", &ds_sr_quantize<float>, "DeepSpeed Quantize with fp32 (CUDA)");
+    m.def("ds_quantize_fp32", &ds_quantize<float>, "DeepSpeed Quantize with fp32");
+    m.def("ds_quantize_fp16", &ds_quantize<sycl::half>, "DeepSpeed Quantize with fp16");
+    m.def("ds_sr_quantize_fp32", &ds_sr_quantize<float>, "DeepSpeed Quantize with fp32");
     m.def(
-        "ds_sr_quantize_fp16", &ds_sr_quantize<sycl::half>, "DeepSpeed Quantize with fp16 (CUDA)");
-    m.def("ds_quantize_asym_fp32", &ds_quantize_asym<float>, "DeepSpeed Quantize with fp32 (CUDA)");
+        "ds_sr_quantize_fp16", &ds_sr_quantize<sycl::half>, "DeepSpeed Quantize with fp16");
+    m.def("ds_quantize_asym_fp32", &ds_quantize_asym<float>, "DeepSpeed Quantize with fp32");
     m.def("ds_quantize_asym_fp16",
           &ds_quantize_asym<sycl::half>,
-          "DeepSpeed Quantize with fp16 (CUDA)");
+          "DeepSpeed Quantize with fp16");
     m.def("ds_sr_quantize_asym_fp32",
           &ds_sr_quantize_asym<float>,
-          "DeepSpeed Quantize with fp32 (CUDA)");
+          "DeepSpeed Quantize with fp32");
     m.def("ds_sr_quantize_asym_fp16",
           &ds_sr_quantize_asym<sycl::half>,
-          "DeepSpeed Quantize with fp16 (CUDA)");
+          "DeepSpeed Quantize with fp16");
     pybind11::enum_<quantize::Type>(m, "QuantizationType")
         .value("Symmetric", quantize::Type::Symmetric)
         .value("Asymmetric", quantize::Type::Asymmetric)

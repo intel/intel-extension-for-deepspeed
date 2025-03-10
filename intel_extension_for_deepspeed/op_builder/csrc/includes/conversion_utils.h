@@ -1,3 +1,18 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +21,7 @@
 #pragma once
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
+#include <dpct/dpct.h>
 #include "ds_kernel_utils.h"
 
 #include <stdint.h>
@@ -270,12 +285,7 @@ DS_D_INLINE sycl::float2 to(sycl::marray<sycl::ext::oneapi::bfloat16, 2> val)
 template <>
 DS_D_INLINE sycl::half to(double val)
 {
-#ifdef __HIP_PLATFORM_AMD__
-    float val_f = __double2float_rn(val);
-    return __float2half(val_f);
-#else
     return sycl::half(val);
-#endif
 }
 template <>
 DS_D_INLINE sycl::half to(float val)

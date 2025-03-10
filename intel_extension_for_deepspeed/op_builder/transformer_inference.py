@@ -43,6 +43,7 @@ class InferenceBuilder(SYCLOpBuilder):
         includes = [
             sycl_kernel_include('csrc/transformer/inference/includes'),
             sycl_kernel_include('csrc/includes'),
+            sycl_kernel_include('csrc/includes/dpct'),
         ]
         return includes
 
