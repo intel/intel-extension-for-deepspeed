@@ -57,7 +57,7 @@ dtype="\
     },
     \"bfloat16\": {
       \"enabled\": true,
-      \"immediate_grad_update\": true,
+      \"immediate_grad_update\": true
     },"
 else
 dtype="\
@@ -71,7 +71,7 @@ dtype="\
     },
     \"bfloat16\": {
       \"enabled\": false,
-      \"immediate_grad_update\": false,
+      \"immediate_grad_update\": false
     },"
 fi
 
