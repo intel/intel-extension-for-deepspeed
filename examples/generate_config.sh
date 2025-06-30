@@ -56,8 +56,7 @@ dtype="\
       \"min_loss_scale\": 1
     },
     \"bfloat16\": {
-      \"enabled\": true,
-      \"loss_scale\": 1.0
+      \"enabled\": true
     },"
 else
 dtype="\
@@ -70,8 +69,7 @@ dtype="\
       \"min_loss_scale\": 1
     },
     \"bfloat16\": {
-      \"enabled\": false,
-      \"loss_scale\": 1.0
+      \"enabled\": false
     },"
 fi
 
