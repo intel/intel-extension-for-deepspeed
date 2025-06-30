@@ -56,8 +56,7 @@ dtype="\
       \"min_loss_scale\": 1
     },
     \"bfloat16\": {
-      \"enabled\": true,
-      \"immediate_grad_update\": true
+      \"enabled\": true
     },"
 else
 dtype="\
@@ -70,8 +69,7 @@ dtype="\
       \"min_loss_scale\": 1
     },
     \"bfloat16\": {
-      \"enabled\": false,
-      \"immediate_grad_update\": false
+      \"enabled\": false
     },"
 fi
 
