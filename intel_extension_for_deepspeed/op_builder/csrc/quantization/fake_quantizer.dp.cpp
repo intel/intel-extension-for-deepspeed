@@ -1,40 +1,71 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
 // DeepSpeed Team
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
+#include <dpct/dpct.h>
 #include <math.h>
-#include "custom_cuda_layers.h"
+#include "custom_sycl_layers.h"
 #include "memory_access_utils.h"
+#include "conversion_utils.h"
 
-void fake_quantize_kernel(sycl::half* vals, int group_size, int num_bits)
-{
-#if DPCT_COMPATIBILITY_TEMP >= 700 || defined(__HIP_PLATFORM_AMD__)
+template<typename T>
+class fake_quantize_kernel {};
 
+template<>
+class fake_quantize_kernel<sycl::half> {
+private:
+  sycl::half* vals;
+  int group_size;
+  int num_bits;
+public:
+  fake_quantize_kernel(sycl::half* vals, int group_size, int num_bits): vals(vals), group_size(group_size), num_bits(num_bits) {}
+
+  void operator()(sycl::nd_item<3>) const {
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     sycl::group<3> b = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group g = sycl::ext::oneapi::experimental::this_sub_group();
 
-    int gid = threadIdx.x >> 5;
-    int lane = threadIdx.x & 0x1f;
-    int warp_num = blockDim.x >> 5;
-    int id = threadIdx.x;
+    /* int gid = threadIdx.x >> 5; */
+    /* int lane = threadIdx.x & 0x1f; */
+    /* int warp_num = blockDim.x >> 5; */
+    /* int id = threadIdx.x; */
+
+    auto gid = item_ct1.get_local_id(2) >> 5;
+    auto lane = item_ct1.get_local_id(2) & 0x1f;
+    auto warp_num = item_ct1.get_local_range(2) >> 5;
+    auto id = item_ct1.get_local_id(2);
 
     constexpr int granularity = 16;
     constexpr int vals_per_access = granularity / sizeof(sycl::half);
 
     sycl::half data[vals_per_access];
 
-    int group_id = blockIdx.x;
+    /* int group_id = blockIdx.x; */
+    auto group_id = item_ct1.get_group(2);
 
     int thread_index = id * vals_per_access;
     int reg_count = 0;
     int offset = group_id * group_size;
     float max = -10000.0;
     for (int thread_index = id * vals_per_access; thread_index < group_size;
-         thread_index += blockDim.x * vals_per_access) {
+         thread_index += item_ct1.get_local_range(2) * vals_per_access) {
         mem_access::load_global<granularity>(data, vals + offset + thread_index);
 
 #pragma unroll
@@ -48,11 +79,14 @@ void fake_quantize_kernel(sycl::half* vals, int group_size, int num_bits)
         auto temp = g.shuffle_xor(max, i);
         if (max < temp) max = temp;
     }
-    __shared__ float partialMax[WARP_SIZE];
+    /* __shared__ float partialMax[WARP_SIZE]; */
+    auto& partialMax = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[WARP_SIZE]>(
+        sycl::ext::oneapi::experimental::this_group<3>());
 
     if (lane == 0) partialMax[gid] = max;
 
-    b.sync();
+    /* b.sync(); */
+    item_ct1.barrier();
 
     if (lane < warp_num) max = partialMax[lane];
 
@@ -70,25 +104,37 @@ void fake_quantize_kernel(sycl::half* vals, int group_size, int num_bits)
     int q_range_min = -(1 << (num_bits - 1));
 
     for (int thread_index = id * vals_per_access; thread_index < group_size;
-         thread_index += blockDim.x * vals_per_access) {
+         thread_index += item_ct1.get_local_range(2) * vals_per_access) {
         mem_access::load_global<granularity>(data, vals + offset + thread_index);
 #pragma unroll
         for (int j = 0; j < vals_per_access; j++) {
             float q_data;
-            q_data = sycl::half2float(data[j]);
-            q_data = __float2int_rn(q_data * q_scale);
+            /* q_data = sycl::half2float(data[j]); */
+            q_data = conversion::to<float>(data[j]);
+            /* q_data = __float2int_rn(q_data * q_scale); */
+            q_data = sycl::vec<float, 1>{(q_data * q_scale)}
+                         .convert<int, sycl::rounding_mode::rte>()[0];
             q_data = q_data > (q_range_max) ? (q_range_max)
                                             : (q_data < (q_range_min) ? (q_range_min) : q_data);
-            data[j] = __float2half_rn(q_data * q_scale_inv);
+            /* data[j] = __float2half_rn(q_data * q_scale_inv); */
+            data[j] = conversion::to<sycl::half>(q_data * q_scale_inv);
         }
         mem_access::store_global<granularity>(vals + offset + thread_index, data);
     }
+  }
 
-#endif
-}
+};
 
-void fake_quantize_kernel(float* vals, int group_size, int num_bits)
-{
+template<>
+class fake_quantize_kernel<float> {
+private:
+  float* vals;
+  int group_size;
+  int num_bits;
+public:
+  fake_quantize_kernel(float* vals, int group_size, int num_bits): vals(vals), group_size(group_size), num_bits(num_bits) {}
+
+  void operator()(sycl::nd_item<3>) const {
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     sycl::group<3> b = sycl::ext::oneapi::experimental::this_group<3>();
     auto g = sycl::ext::oneapi::experimental::this_sub_group();
@@ -178,6 +224,7 @@ void fake_quantize_kernel(float* vals, int group_size, int num_bits)
         mem_access::store_global<granularity>(vals + offset + thread_index, data);
     }
 }
+};
 
 template <typename T>
 void launch_fake_quantize_kernel(T* vals,
@@ -189,17 +236,10 @@ void launch_fake_quantize_kernel(T* vals,
     sycl::range<3> grid_dim(1, 1, group_num);
     sycl::range<3> block_dim(1, 1, 1024);
 
-    /*
-    DPCT1049:44: The work-group size passed to the SYCL kernel may exceed the limit. To get the
-    device limit, query info::device::max_work_group_size. Adjust the work-group size if needed.
-    */
-    {
-        dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp16});
-        stream->parallel_for(sycl::nd_range<3>(grid_dim * block_dim, block_dim),
-                             [=](sycl::nd_item<3> item_ct1) {
-                                 fake_quantize_kernel(vals, total_count / group_num, num_bits);
-                             });
-    }
+   dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp16});
+   fake_quantize_kernel<T> fn(vals, total_count / group_num, num_bits);
+   stream->parallel_for(sycl::nd_range<3>(grid_dim * block_dim, block_dim), fn);
+    
 }
 
 template void launch_fake_quantize_kernel(float* vals,
@@ -213,37 +253,59 @@ template void launch_fake_quantize_kernel(sycl::half* vals,
                                           int num_bits,
                                           dpct::queue_ptr stream);
 
-void sr_fake_quantize_kernel(sycl::half* vals,
-                             int token_size,
-                             int token_num,
-                             int num_bits,
-                             std::pair<uint64_t, uint64_t> seed)
-{
-#if DPCT_COMPATIBILITY_TEMP >= 700 || defined(__HIP_PLATFORM_AMD__)
+template<typename T>
+class sr_fake_quantize_kernel {};
+
+template<>
+class sr_fake_quantize_kernel<sycl::half> {
+private:
+  sycl::half* vals;
+  int token_size;
+  int token_num;
+  int num_bits;
+  std::pair<uint64_t, uint64_t> seed;
+public:
+  sr_fake_quantize_kernel(sycl::half* vals,
+                          int token_size,
+                          int token_num,
+                          int num_bits,
+                          std::pair<uint64_t, uint64_t> seed): vals(vals),
+                                                               token_size(token_size),
+                                                               token_num(token_num),
+                                                               num_bits(num_bits),
+                                                               seed(seed) {}
+
+  void operator()(sycl::nd_item<3>) const {
 
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     sycl::group<3> b = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group g = sycl::ext::oneapi::experimental::this_sub_group();
 
-    int gid = threadIdx.x >> 5;
-    int lane = threadIdx.x & 0x1f;
-    int warp_num = blockDim.x >> 5;
+    /* int gid = threadIdx.x >> 5; */
+    auto gid = item_ct1.get_local_id(2) >> 5;
+    /* int lane = threadIdx.x & 0x1f; */
+    auto lane = item_ct1.get_local_id(2) & 0x1f;
+    /* int warp_num = blockDim.x >> 5; */
+    auto warp_num = item_ct1.get_local_range(2) >> 5;
 
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    /* int idx = blockIdx.x * blockDim.x + threadIdx.x; */
+    auto idx = item_ct1.get_group(2) * item_ct1.get_local_range(2) + item_ct1.get_local_id(2);
 
-    float2* vals_cast = reinterpret_cast<float2*>(vals);
+    sycl::float2* vals_cast = reinterpret_cast<sycl::float2*>(vals);
 
     sycl::half2 data_low[128];
     sycl::half2 data_high[128];
 
-    int bid = blockIdx.x;
+    /* int bid = blockIdx.x; */
+    auto bid = item_ct1.get_group(2);
 
     /* curandStatePhilox4_32_10_t state; */
     /* curand_init(seed.first, idx, seed.second, &state); */
     dpct::rng::device::rng_generator<oneapi::mkl::rng::device::philox4x32x10<1>> state;
     state = dpct::rng::device::rng_generator<oneapi::mkl::rng::device::philox4x32x10<1>>(seed.first, {seed.second, (unsigned long)idx * 4});
     
-    unsigned int tid = threadIdx.x;
+    /* unsigned int tid = threadIdx.x; */
+    auto tid = item_ct1.get_local_id(2);
     int reg_count = 0;
     int offset = bid * token_size;
     int group_index = bid * token_size + tid;
@@ -253,21 +315,24 @@ void sr_fake_quantize_kernel(sycl::half* vals,
         // float min = 10000.0;
         float max = -10000.0;
         while (tid < token_size) {
-            float2 data = vals_cast[offset + tid];
+            sycl::float2 data = vals_cast[offset + tid];
             sycl::half2* data_h = reinterpret_cast<sycl::half2*>(&data);
             data_low[reg_count] = data_h[0];
             data_high[reg_count] = data_h[1];
 
-            float2 data_f[2];
-            data_f[0] = sycl::half22float2(data_h[0]);
-            data_f[1] = sycl::half22float2(data_h[1]);
+            sycl::float2 data_f[2];
+            /* data_f[0] = sycl::half22float2(data_h[0]); */
+            data_f[0] = conversion::to<sycl::float2>(data_h[0]);
+            /* data_f[1] = sycl::half22float2(data_h[1]); */
+            data_f[1] = conversion::to<sycl::float2>(data_h[1]);
 
-            if (abs((float)data_f[0].x) > max) max = abs((float)data_f[0].x);
-            if (abs((float)data_f[0].y) > max) max = abs((float)data_f[0].y);
-            if (abs((float)data_f[1].x) > max) max = abs((float)data_f[1].x);
-            if (abs((float)data_f[1].y) > max) max = abs((float)data_f[1].y);
+            if (abs((float)data_f[0].x()) > max) max = abs((float)data_f[0].x());
+            if (abs((float)data_f[0].y()) > max) max = abs((float)data_f[0].y());
+            if (abs((float)data_f[1].x()) > max) max = abs((float)data_f[1].x());
+            if (abs((float)data_f[1].y()) > max) max = abs((float)data_f[1].y());
 
-            tid += blockDim.x;
+            /* tid += blockDim.x; */
+            tid += item_ct1.get_local_range(2);
             reg_count++;
         }
 
@@ -277,11 +342,14 @@ void sr_fake_quantize_kernel(sycl::half* vals,
             if (max < temp) max = temp;
         }
 
-        __shared__ float partialMax[WARP_SIZE];
+        /* __shared__ float partialMax[WARP_SIZE]; */
+        auto& partialMax = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[WARP_SIZE]>(
+            sycl::ext::oneapi::experimental::this_group<3>());
 
         if (lane == 0) partialMax[gid] = max;
 
-        b.sync();
+        /* b.sync(); */
+        item_ct1.barrier();
 
         if (lane < warp_num) max = partialMax[lane];
 
@@ -298,67 +366,86 @@ void sr_fake_quantize_kernel(sycl::half* vals,
         float low_q = (float)(-((1 << (num_bits - 1))));
 
         for (int i = 0; i < reg_count; i++) {
-            int token_index = i * blockDim.x + threadIdx.x;
+            /* int token_index = i * blockDim.x + threadIdx.x; */
+            int token_index = i * item_ct1.get_local_range(2) + item_ct1.get_local_id(2);
             if (token_index < token_size) {
-                float2 data_f[2];
-                data_f[0] = sycl::half22float2(data_low[i]);
-                data_f[1] = sycl::half22float2(data_high[i]);
+                sycl::float2 data_f[2];
+                /* data_f[0] = sycl::half22float2(data_low[i]); */
+                data_f[0] = conversion::to<sycl::float2>(data_low[i]);
+                /* data_f[1] = sycl::half22float2(data_high[i]); */
+                data_f[1] = conversion::to<sycl::float2>(data_high[i]);
 
-                float2 q_data_int[2];
-                q_data_int[0].x = (float)((int)(data_f[0].x * q_scale_val));
-                q_data_int[0].y = (float)((int)(data_f[0].y * q_scale_val));
-                q_data_int[1].x = (float)((int)(data_f[1].x * q_scale_val));
-                q_data_int[1].y = (float)((int)(data_f[1].y * q_scale_val));
+                sycl::float2 q_data_int[2];
+                q_data_int[0].x() = (float)((int)(data_f[0].x() * q_scale_val));
+                q_data_int[0].y() = (float)((int)(data_f[0].y() * q_scale_val));
+                q_data_int[1].x() = (float)((int)(data_f[1].x() * q_scale_val));
+                q_data_int[1].y() = (float)((int)(data_f[1].y() * q_scale_val));
 
                 // Stochastic rounding
                 sycl::float4 rand = state.generate<oneapi::mkl::rng::device::uniform<float>, 4>();
 
                 float q_error[4];
-                q_error[0] = abs(data_f[0].x - (q_data_int[0].x / q_scale_val)) * q_scale_val;
-                q_error[1] = abs(data_f[0].y - (q_data_int[0].y / q_scale_val)) * q_scale_val;
-                q_error[2] = abs(data_f[1].x - (q_data_int[1].x / q_scale_val)) * q_scale_val;
-                q_error[3] = abs(data_f[1].y - (q_data_int[1].y / q_scale_val)) * q_scale_val;
+                q_error[0] = abs(data_f[0].x() - (q_data_int[0].x() / q_scale_val)) * q_scale_val;
+                q_error[1] = abs(data_f[0].y() - (q_data_int[0].y() / q_scale_val)) * q_scale_val;
+                q_error[2] = abs(data_f[1].x() - (q_data_int[1].x() / q_scale_val)) * q_scale_val;
+                q_error[3] = abs(data_f[1].y() - (q_data_int[1].y() / q_scale_val)) * q_scale_val;
 
-                q_data_int[0].x =
-                    (rand.x < q_error[0] && q_data_int[0].x > low_q && q_data_int[0].x < high_q)
-                        ? (q_data_int[0].x + (data_f[0].x > 0 ? 1 : -1))
-                        : q_data_int[0].x;
-                q_data_int[0].y =
-                    (rand.y < q_error[1] && q_data_int[0].y > low_q && q_data_int[0].y < high_q)
-                        ? (q_data_int[0].y + (data_f[0].y > 0 ? 1 : -1))
-                        : q_data_int[0].y;
-                q_data_int[1].x =
-                    (rand.w < q_error[2] && q_data_int[1].x > low_q && q_data_int[1].x < high_q)
-                        ? (q_data_int[1].x + (data_f[1].x > 0 ? 1 : -1))
-                        : q_data_int[1].x;
-                q_data_int[1].y =
-                    (rand.z < q_error[3] && q_data_int[1].y > low_q && q_data_int[1].y < high_q)
-                        ? (q_data_int[1].y + (data_f[1].y > 0 ? 1 : -1))
-                        : q_data_int[1].y;
+                q_data_int[0].x() =
+                    (rand.x() < q_error[0] && q_data_int[0].x() > low_q && q_data_int[0].x() < high_q)
+                        ? (q_data_int[0].x() + (data_f[0].x() > 0 ? 1 : -1))
+                        : q_data_int[0].x();
+                q_data_int[0].y() =
+                    (rand.y() < q_error[1] && q_data_int[0].y() > low_q && q_data_int[0].y() < high_q)
+                        ? (q_data_int[0].y() + (data_f[0].y() > 0 ? 1 : -1))
+                        : q_data_int[0].y();
+                q_data_int[1].x() =
+                    (rand.w() < q_error[2] && q_data_int[1].x() > low_q && q_data_int[1].x() < high_q)
+                        ? (q_data_int[1].x() + (data_f[1].x() > 0 ? 1 : -1))
+                        : q_data_int[1].x();
+                q_data_int[1].y() =
+                    (rand.z() < q_error[3] && q_data_int[1].y() > low_q && q_data_int[1].y() < high_q)
+                        ? (q_data_int[1].y() + (data_f[1].y() > 0 ? 1 : -1))
+                        : q_data_int[1].y();
 
-                data_f[0].x = q_data_int[0].x / q_scale_val;
-                data_f[0].y = q_data_int[0].y / q_scale_val;
-                data_f[1].x = q_data_int[1].x / q_scale_val;
-                data_f[1].y = q_data_int[1].y / q_scale_val;
+                data_f[0].x() = q_data_int[0].x() / q_scale_val;
+                data_f[0].y() = q_data_int[0].y() / q_scale_val;
+                data_f[1].x() = q_data_int[1].x() / q_scale_val;
+                data_f[1].y() = q_data_int[1].y() / q_scale_val;
 
-                float2 result;
+                sycl::float2 result;
                 sycl::half2* result_h = reinterpret_cast<sycl::half2*>(&result);
-                result_h[0] = __float22half2_rn(data_f[0]);
-                result_h[1] = __float22half2_rn(data_f[1]);
+                /* result_h[0] = __float22half2_rn(data_f[0]); */
+                result_h[0] = conversion::to<sycl::half2>(data_f[0]);
+                /* result_h[1] = __float22half2_rn(data_f[1]); */
+                result_h[1] = conversion::to<sycl::half2>(data_f[1]);
 
                 vals_cast[offset + token_index] = result;
             }
         }
     }
-#endif
-}
+  }
+};
 
-void sr_fake_quantize_kernel(float* vals,
-                                        int token_size,
-                                        int token_num,
-                                        int num_bits,
-                                        std::pair<uint64_t, uint64_t> seed)
-{
+template<>
+class sr_fake_quantize_kernel<float> {
+private:
+  float* vals;
+  int token_size;
+  int token_num;
+  int num_bits;
+  std::pair<uint64_t, uint64_t> seed;
+public:
+  sr_fake_quantize_kernel(float* vals,
+                          int token_size,
+                          int token_num,
+                          int num_bits,
+                          std::pair<uint64_t, uint64_t> seed): vals(vals),
+                                                               token_size(token_size),
+                                                               token_num(token_num),
+                                                               num_bits(num_bits),
+                                                               seed(seed) {}
+
+  void operator()(sycl::nd_item<3>) const {
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     sycl::group<3> b = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group g = sycl::ext::oneapi::experimental::this_sub_group();
@@ -478,7 +565,9 @@ void sr_fake_quantize_kernel(float* vals,
             }
         }
     }
-}
+  }
+};
+
 
 template <typename T>
 void launch_sr_fake_quantize_kernel(T* vals,
@@ -499,11 +588,9 @@ void launch_sr_fake_quantize_kernel(T* vals,
     */
     {
         dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp16});
+        sr_fake_quantize_kernel<T> fn(vals, (total_count / group_num) / 4, group_num, num_bits, seed);
         stream->parallel_for(
-            sycl::nd_range<3>(grid_dim * block_dim, block_dim), [=](sycl::nd_item<3> item_ct1) {
-                sr_fake_quantize_kernel(
-                    vals, (total_count / group_num) / 4, group_num, num_bits, seed);
-            });
+            sycl::nd_range<3>(grid_dim * block_dim, block_dim), fn);
     }
 }
 template void launch_sr_fake_quantize_kernel(float* vals,
@@ -516,25 +603,41 @@ template void launch_sr_fake_quantize_kernel(sycl::half* vals,
                                              int group_num,
                                              int num_bits,
                                              dpct::queue_ptr stream);
+template<typename T>
+class fake_quantize_kernel_asym {};
 
-void fake_quantize_kernel_asym(sycl::half* vals, int group_size, int num_bits)
-{
-#if DPCT_COMPATIBILITY_TEMP >= 700 || defined(__HIP_PLATFORM_AMD__)
+template<>
+class fake_quantize_kernel_asym<sycl::half> {
+private:
+  sycl::half* vals;
+  int group_size;
+  int num_bits;
+public:
+  fake_quantize_kernel_asym(sycl::half* vals, int group_size, int num_bits): vals(vals), 
+                                                                             group_size(group_size), 
+                                                                             num_bits(num_bits) {}
+
+  void operator()(sycl::nd_item<3>) const {
 
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     sycl::group<3> b = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group g = sycl::ext::oneapi::experimental::this_sub_group();
 
-    int gid = threadIdx.x >> 5;
-    int lane = threadIdx.x & 0x1f;
-    int warp_num = blockDim.x >> 5;
-    int id = threadIdx.x;
+    /* int gid = threadIdx.x >> 5; */
+    auto gid = item_ct1.get_local_id(2) >> 5;
+    /* int lane = threadIdx.x & 0x1f; */
+    auto lane = item_ct1.get_local_id(2) & 0x1f;
+    /* int warp_num = blockDim.x >> 5; */
+    auto warp_num = item_ct1.get_local_range(2) >> 5;
+    /* int id = threadIdx.x; */
+    auto id = item_ct1.get_local_id(2);
 
-    float2* vals_cast = reinterpret_cast<float2*>(vals);
+    sycl::float2* vals_cast = reinterpret_cast<sycl::float2*>(vals);
 
-    float2 data[MAX_REG];
+    sycl::float2 data[MAX_REG];
 
-    int group_id = blockIdx.x;
+    /* int group_id = blockIdx.x; */
+    auto group_id = item_ct1.get_group(2);
 
     {
         int group_index = id;
@@ -557,7 +660,8 @@ void fake_quantize_kernel_asym(sycl::half* vals, int group_size, int num_bits)
             if (((float)data_h[2]) < min) min = (float)data_h[2];
             if (((float)data_h[3]) < min) min = (float)data_h[3];
 
-            group_index += blockDim.x;
+            /* group_index += blockDim.x; */
+            group_index += item_ct1.get_local_range(2);
             reg_count++;
         }
 
@@ -573,13 +677,18 @@ void fake_quantize_kernel_asym(sycl::half* vals, int group_size, int num_bits)
             if (min > temp) min = temp;
         }
 
-        __shared__ float partialMax[WARP_SIZE];
-        __shared__ float partialMin[WARP_SIZE];
+        /* __shared__ float partialMax[WARP_SIZE]; */
+        auto& partialMax = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[WARP_SIZE]>(
+            sycl::ext::oneapi::experimental::this_group<3>());
+        /* __shared__ float partialMin[WARP_SIZE]; */
+        auto& partialMin = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[WARP_SIZE]>(
+            sycl::ext::oneapi::experimental::this_group<3>());
 
         if (lane == 0) partialMax[gid] = max;
         if (lane == 0) partialMin[gid] = min;
 
-        b.sync();
+        /* b.sync(); */
+        item_ct1.barrier();
 
         if (lane < warp_num) max = partialMax[lane];
         if (lane < warp_num) min = partialMin[lane];
@@ -602,37 +711,52 @@ void fake_quantize_kernel_asym(sycl::half* vals, int group_size, int num_bits)
         float q_scale_inv = 1 / q_scale;
 
         for (int i = 0; i < reg_count; i++) {
-            group_index = i * blockDim.x + id;
+            /* group_index = i * blockDim.x + id; */
+            group_index = i * item_ct1.get_local_range(2) + item_ct1.get_local_id(2);
             if (group_index < group_size) {
                 sycl::half2* data_h = reinterpret_cast<sycl::half2*>(&data[i]);
-                float2 q_data[2];
-                q_data[0] = sycl::half22float2(data_h[0]);
-                q_data[1] = sycl::half22float2(data_h[1]);
+                sycl::float2 q_data[2];
+                /* q_data[0] = sycl::half22float2(data_h[0]); */
+                q_data[0] = conversion::to<sycl::float2>(data_h[0]);
+                /* q_data[1] = sycl::half22float2(data_h[1]); */
+                q_data[1] = conversion::to<sycl::float2>(data_h[1]);
 
-                float2 q_data_int[2];
+                sycl::float2 q_data_int[2];
 
-                q_data_int[0].x = roundf((q_data[0].x - min) * q_scale_inv);
-                q_data_int[0].y = roundf((q_data[0].y - min) * q_scale_inv);
-                q_data_int[1].x = roundf((q_data[1].x - min) * q_scale_inv);
-                q_data_int[1].y = roundf((q_data[1].y - min) * q_scale_inv);
+                q_data_int[0].x() = roundf((q_data[0].x() - min) * q_scale_inv);
+                q_data_int[0].y() = roundf((q_data[0].y() - min) * q_scale_inv);
+                q_data_int[1].x() = roundf((q_data[1].x() - min) * q_scale_inv);
+                q_data_int[1].y() = roundf((q_data[1].y() - min) * q_scale_inv);
 
-                q_data_int[0].x = q_data_int[0].x * q_scale + min;
-                q_data_int[0].y = q_data_int[0].y * q_scale + min;
-                q_data_int[1].x = q_data_int[1].x * q_scale + min;
-                q_data_int[1].y = q_data_int[1].y * q_scale + min;
+                q_data_int[0].x() = q_data_int[0].x() * q_scale + min;
+                q_data_int[0].y() = q_data_int[0].y() * q_scale + min;
+                q_data_int[1].x() = q_data_int[1].x() * q_scale + min;
+                q_data_int[1].y() = q_data_int[1].y() * q_scale + min;
 
-                data_h[0] = __float22half2_rn(q_data_int[0]);
-                data_h[1] = __float22half2_rn(q_data_int[1]);
+                /* data_h[0] = __float22half2_rn(q_data_int[0]); */
+                data_h[0] = conversion::to<sycl::half2>(q_data_int[0]);
+                /* data_h[1] = __float22half2_rn(q_data_int[1]); */
+                data_h[1] = conversion::to<sycl::half2>(q_data_int[1]);
 
                 vals_cast[offset + group_index] = data[i];
             }
         }
     }
-#endif
-}
+  }
+};
 
-void fake_quantize_kernel_asym(float* vals, int group_size, int num_bits)
-{
+template<>
+class fake_quantize_kernel_asym<float> {
+private:
+  float* vals;
+  int group_size;
+  int num_bits;
+public:
+  fake_quantize_kernel_asym(float* vals, int group_size, int num_bits): vals(vals), 
+                                                                             group_size(group_size), 
+                                                                             num_bits(num_bits) {}
+
+  void operator()(sycl::nd_item<3>) const {
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     sycl::group<3> b = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group g = sycl::ext::oneapi::experimental::this_sub_group();
@@ -740,7 +864,8 @@ void fake_quantize_kernel_asym(float* vals, int group_size, int num_bits)
             vals_cast[group_index + bid * group_size] = q_data;
         }
     }
-}
+  }
+};
 
 template <typename T>
 void launch_fake_quantize_kernel_asym(T* vals,
@@ -758,10 +883,9 @@ void launch_fake_quantize_kernel_asym(T* vals,
     */
     {
         dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp16});
+        fake_quantize_kernel_asym<T> fn(vals, (total_count / group_num) / 4, num_bits);
         stream->parallel_for(
-            sycl::nd_range<3>(grid_dim * block_dim, block_dim), [=](sycl::nd_item<3> item_ct1) {
-                fake_quantize_kernel_asym(vals, (total_count / group_num) / 4, num_bits);
-            });
+            sycl::nd_range<3>(grid_dim * block_dim, block_dim), fn);
     }
 }
 
@@ -782,30 +906,35 @@ void sr_fake_quantize_kernel_asym(sycl::half* vals,
                                   int num_bits,
                                   std::pair<uint64_t, uint64_t> seed)
 {
-#if DPCT_COMPATIBILITY_TEMP >= 700 || defined(__HIP_PLATFORM_AMD__)
 
     auto item_ct1 = sycl::ext::oneapi::experimental::this_nd_item<3>();
     sycl::group<3> b = sycl::ext::oneapi::experimental::this_group<3>();
     sycl::sub_group g = sycl::ext::oneapi::experimental::this_sub_group();
 
-    int gid = threadIdx.x >> 5;
-    int lane = threadIdx.x & 0x1f;
-    int warp_num = blockDim.x >> 5;
+    /* int gid = threadIdx.x >> 5; */
+    auto gid = item_ct1.get_local_id(2) >> 5;
+    /* int lane = threadIdx.x & 0x1f; */
+    auto lane = item_ct1.get_local_id(2) & 0x1f;
+    /* int warp_num = blockDim.x >> 5; */
+    auto warp_num = item_ct1.get_local_range(2) >> 5;
 
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    /* int idx = blockIdx.x * blockDim.x + threadIdx.x; */
+    auto idx = item_ct1.get_group(2) * item_ct1.get_local_range(2) + item_ct1.get_local_id(2);
 
-    float2* vals_cast = reinterpret_cast<float2*>(vals);
+    sycl::float2* vals_cast = reinterpret_cast<sycl::float2*>(vals);
 
     sycl::half2 data_low[128];
     sycl::half2 data_high[128];
 
-    int bid = blockIdx.x;
+    /* int bid = blockIdx.x; */
+    auto bid = item_ct1.get_group(2);
 
     /* curandStatePhilox4_32_10_t state; */
     /* curand_init(seed.first, idx, seed.second, &state); */
     dpct::rng::device::rng_generator<oneapi::mkl::rng::device::philox4x32x10<1>> state;
     state = dpct::rng::device::rng_generator<oneapi::mkl::rng::device::philox4x32x10<1>>(seed.first, {seed.second, (unsigned long)idx * 4});
-    unsigned int tid = threadIdx.x;
+    /* unsigned int tid = threadIdx.x; */
+    auto tid = item_ct1.get_local_id(2);
     int reg_count = 0;
     int offset = bid * token_size;
     int group_index = bid * token_size + tid;
@@ -815,26 +944,29 @@ void sr_fake_quantize_kernel_asym(sycl::half* vals,
         float min = 10000.0;
         float max = -10000.0;
         while (tid < token_size) {
-            float2 data = vals_cast[offset + tid];
+            sycl::float2 data = vals_cast[offset + tid];
             sycl::half2* data_h = reinterpret_cast<sycl::half2*>(&data);
             data_low[reg_count] = data_h[0];
             data_high[reg_count] = data_h[1];
 
-            float2 data_f[2];
-            data_f[0] = sycl::half22float2(data_h[0]);
-            data_f[1] = sycl::half22float2(data_h[1]);
+            sycl::float2 data_f[2];
+            /* data_f[0] = sycl::half22float2(data_h[0]); */
+            data_f[0] = conversion::to<sycl::float2>(data_h[0]);
+            /* data_f[1] = sycl::half22float2(data_h[1]); */
+            data_f[1] = conversion::to<sycl::float2>(data_h[1]);
 
-            if (((float)data_f[0].x) > max) max = (float)data_f[0].x;
-            if (((float)data_f[0].y) > max) max = (float)data_f[0].y;
-            if (((float)data_f[1].x) > max) max = (float)data_f[1].x;
-            if (((float)data_f[1].y) > max) max = (float)data_f[1].y;
+            if (((float)data_f[0].x()) > max) max = (float)data_f[0].x();
+            if (((float)data_f[0].y()) > max) max = (float)data_f[0].y();
+            if (((float)data_f[1].x()) > max) max = (float)data_f[1].x();
+            if (((float)data_f[1].y()) > max) max = (float)data_f[1].y();
 
-            if (((float)data_f[0].x) < min) min = (float)data_f[0].x;
-            if (((float)data_f[0].y) < min) min = (float)data_f[0].y;
-            if (((float)data_f[1].x) < min) min = (float)data_f[1].x;
-            if (((float)data_f[1].y) < min) min = (float)data_f[1].y;
+            if (((float)data_f[0].x()) < min) min = (float)data_f[0].x();
+            if (((float)data_f[0].y()) < min) min = (float)data_f[0].y();
+            if (((float)data_f[1].x()) < min) min = (float)data_f[1].x();
+            if (((float)data_f[1].y()) < min) min = (float)data_f[1].y();
 
-            tid += blockDim.x;
+            /* tid += blockDim.x; */
+            tid += item_ct1.get_local_range(2);
             reg_count++;
         }
 
@@ -850,13 +982,18 @@ void sr_fake_quantize_kernel_asym(sycl::half* vals,
             if (min > temp) min = temp;
         }
 
-        __shared__ float partialMax[WARP_SIZE];
-        __shared__ float partialMin[WARP_SIZE];
+        /* __shared__ float partialMax[WARP_SIZE]; */
+        auto& partialMax = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[WARP_SIZE]>(
+            sycl::ext::oneapi::experimental::this_group<3>());
+        /* __shared__ float partialMin[WARP_SIZE]; */
+        auto& partialMin = *sycl::ext::oneapi::group_local_memory_for_overwrite<float[WARP_SIZE]>(
+            sycl::ext::oneapi::experimental::this_group<3>());
 
         if (lane == 0) partialMax[gid] = max;
         if (lane == 0) partialMin[gid] = min;
 
-        b.sync();
+        /* b.sync(); */
+        item_ct1.barrier();
 
         if (lane < warp_num) max = partialMax[lane];
         if (lane < warp_num) min = partialMin[lane];
@@ -880,17 +1017,20 @@ void sr_fake_quantize_kernel_asym(sycl::half* vals,
         float high_q = (float)((1 << num_bits) - 1);
 
         for (int i = 0; i < reg_count; i++) {
-            int token_index = i * blockDim.x + threadIdx.x;
+            /* int token_index = i * blockDim.x + threadIdx.x; */
+            int token_index = i * item_ct1.get_local_range(2) + item_ct1.get_local_id(2);
             if (token_index < token_size) {
-                float2 data_f[2];
-                data_f[0] = sycl::half22float2(data_low[i]);
-                data_f[1] = sycl::half22float2(data_high[i]);
+                sycl::float2 data_f[2];
+                /* data_f[0] = sycl::half22float2(data_low[i]); */
+                data_f[0] = conversion::to<sycl::float2>(data_low[i]);
+                /* data_f[1] = sycl::half22float2(data_high[i]); */
+                data_f[1] = conversion::to<sycl::float2>(data_high[i]);
 
-                float2 q_data_int[2];
-                q_data_int[0].x = (float)((unsigned int)((data_f[0].x - min) * q_scale_val_inv));
-                q_data_int[0].y = (float)((unsigned int)((data_f[0].y - min) * q_scale_val_inv));
-                q_data_int[1].x = (float)((unsigned int)((data_f[1].x - min) * q_scale_val_inv));
-                q_data_int[1].y = (float)((unsigned int)((data_f[1].y - min) * q_scale_val_inv));
+                sycl::float2 q_data_int[2];
+                q_data_int[0].x() = (float)((unsigned int)((data_f[0].x() - min) * q_scale_val_inv));
+                q_data_int[0].y() = (float)((unsigned int)((data_f[0].y() - min) * q_scale_val_inv));
+                q_data_int[1].x() = (float)((unsigned int)((data_f[1].x() - min) * q_scale_val_inv));
+                q_data_int[1].y() = (float)((unsigned int)((data_f[1].y() - min) * q_scale_val_inv));
 
                 // Stochastic rounding
                 /* float4 rand = curand_uniform4(&state); */
@@ -898,42 +1038,43 @@ void sr_fake_quantize_kernel_asym(sycl::half* vals,
 
                 float q_error[4];
                 q_error[0] =
-                    abs(data_f[0].x - ((q_data_int[0].x * q_scale_val) + min)) * q_scale_val_inv;
+                    abs(data_f[0].x() - ((q_data_int[0].x() * q_scale_val) + min)) * q_scale_val_inv;
                 q_error[1] =
-                    abs(data_f[0].y - ((q_data_int[0].y * q_scale_val) + min)) * q_scale_val_inv;
+                    abs(data_f[0].y() - ((q_data_int[0].y() * q_scale_val) + min)) * q_scale_val_inv;
                 q_error[2] =
-                    abs(data_f[1].x - ((q_data_int[1].x * q_scale_val) + min)) * q_scale_val_inv;
+                    abs(data_f[1].x() - ((q_data_int[1].x() * q_scale_val) + min)) * q_scale_val_inv;
                 q_error[3] =
-                    abs(data_f[1].y - ((q_data_int[1].y * q_scale_val) + min)) * q_scale_val_inv;
+                    abs(data_f[1].y() - ((q_data_int[1].y() * q_scale_val) + min)) * q_scale_val_inv;
 
-                q_data_int[0].x = (rand.x < q_error[0] && q_data_int[0].x < high_q)
-                                      ? (q_data_int[0].x + 1)
-                                      : q_data_int[0].x;
-                q_data_int[0].y = (rand.y < q_error[1] && q_data_int[0].y < high_q)
-                                      ? (q_data_int[0].y + 1)
-                                      : q_data_int[0].y;
-                q_data_int[1].x = (rand.w < q_error[2] && q_data_int[1].x < high_q)
-                                      ? (q_data_int[1].x + 1)
-                                      : q_data_int[1].x;
-                q_data_int[1].y = (rand.z < q_error[3] && q_data_int[1].y < high_q)
-                                      ? (q_data_int[1].y + 1)
-                                      : q_data_int[1].y;
+                q_data_int[0].x() = (rand.x() < q_error[0] && q_data_int[0].x() < high_q)
+                                      ? (q_data_int[0].x() + 1)
+                                      : q_data_int[0].x();
+                q_data_int[0].y() = (rand.y() < q_error[1] && q_data_int[0].y() < high_q)
+                                      ? (q_data_int[0].y() + 1)
+                                      : q_data_int[0].y();
+                q_data_int[1].x() = (rand.w() < q_error[2] && q_data_int[1].x() < high_q)
+                                      ? (q_data_int[1].x() + 1)
+                                      : q_data_int[1].x();
+                q_data_int[1].y() = (rand.z() < q_error[3] && q_data_int[1].y() < high_q)
+                                      ? (q_data_int[1].y() + 1)
+                                      : q_data_int[1].y();
 
-                data_f[0].x = q_data_int[0].x * q_scale_val + min;
-                data_f[0].y = q_data_int[0].y * q_scale_val + min;
-                data_f[1].x = q_data_int[1].x * q_scale_val + min;
-                data_f[1].y = q_data_int[1].y * q_scale_val + min;
+                data_f[0].x() = q_data_int[0].x() * q_scale_val + min;
+                data_f[0].y() = q_data_int[0].y() * q_scale_val + min;
+                data_f[1].x() = q_data_int[1].x() * q_scale_val + min;
+                data_f[1].y() = q_data_int[1].y() * q_scale_val + min;
 
-                float2 result;
+                sycl::float2 result;
                 sycl::half2* result_h = reinterpret_cast<sycl::half2*>(&result);
-                result_h[0] = __float22half2_rn(data_f[0]);
-                result_h[1] = __float22half2_rn(data_f[1]);
+                /* result_h[0] = __float22half2_rn(data_f[0]); */
+                result_h[0] = conversion::to<sycl::half2>(data_f[0]);
+                /* result_h[1] = __float22half2_rn(data_f[1]); */
+                result_h[1] = conversion::to<sycl::half2>(data_f[1]);
 
                 vals_cast[offset + token_index] = result;
             }
         }
     }
-#endif
 }
 
 void sr_fake_quantize_kernel_asym(float* vals,
@@ -1102,11 +1243,9 @@ void launch_sr_fake_quantize_kernel_asym(T* vals,
     */
     {
         dpct::has_capability_or_fail(stream->get_device(), {sycl::aspect::fp16});
+        sr_fake_quantize_kernel<T> fn(vals, (total_count / group_num) / 4, group_num, num_bits, seed);
         stream->parallel_for(
-            sycl::nd_range<3>(grid_dim * block_dim, block_dim), [=](sycl::nd_item<3> item_ct1) {
-                sr_fake_quantize_kernel(
-                    vals, (total_count / group_num) / 4, group_num, num_bits, seed);
-            });
+            sycl::nd_range<3>(grid_dim * block_dim, block_dim), fn);
     }
 }
 template void launch_sr_fake_quantize_kernel_asym(float* vals,

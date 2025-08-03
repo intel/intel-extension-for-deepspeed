@@ -1,3 +1,18 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,12 +21,7 @@
 #pragma once
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
-#ifndef __HIP_PLATFORM_AMD__
-#endif
-#ifdef __HIP_PLATFORM_AMD__
-#include <rocblas/rocblas.h>
-#endif
+#include <dpct/dpct.h>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -19,19 +29,19 @@
 #include <limits>
 #include <memory>
 #include "StopWatch.h"
-#include "cublas_wrappers.h"
+#include "mkl_wrappers.h"
 #include <cmath>
 
 template <typename T>
 void check(T result, char const* const func, const char* const file, int const line)
 {
     if (result) {
-        std::cout << (std::string("CUDA runtime error: ") + +file + ":" + std::to_string(line) +
+        std::cout << (std::string("SYCL runtime error: ") + +file + ":" + std::to_string(line) +
                       " \n");
     }
 }
 
-#define check_cuda_error(val) check((val), #val, __FILE__, __LINE__)
+#define check_sycl_error(val) check((val), #val, __FILE__, __LINE__)
 
 template <typename T>
 class GemmTest {
@@ -46,18 +56,18 @@ public:
     {
     dpct::device_ext& dev_ct1 = dpct::get_current_device();
     sycl::queue& q_ct1 = dev_ct1.in_order_queue();
-        check_cuda_error(DPCT_CHECK_ERROR(A = (T*)sycl::malloc_device(sizeof(T) * M * K, q_ct1)));
-        check_cuda_error(DPCT_CHECK_ERROR(B = (T*)sycl::malloc_device(sizeof(T) * K * N, q_ct1)));
-        check_cuda_error(DPCT_CHECK_ERROR(C = (T*)sycl::malloc_device(sizeof(T) * M * N, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(A = (T*)sycl::malloc_device(sizeof(T) * M * K, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(B = (T*)sycl::malloc_device(sizeof(T) * K * N, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(C = (T*)sycl::malloc_device(sizeof(T) * M * N, q_ct1)));
     }
 
     ~GemmTest()
     {
     dpct::device_ext& dev_ct1 = dpct::get_current_device();
     sycl::queue& q_ct1 = dev_ct1.in_order_queue();
-        check_cuda_error(DPCT_CHECK_ERROR(sycl::free(A, q_ct1)));
-        check_cuda_error(DPCT_CHECK_ERROR(sycl::free(B, q_ct1)));
-        check_cuda_error(DPCT_CHECK_ERROR(sycl::free(C, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(sycl::free(A, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(sycl::free(B, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(sycl::free(C, q_ct1)));
     }
 
     std::array<int, 3> TestAlgo(int loops)
@@ -66,7 +76,7 @@ public:
         float beta = (T)0.0f;
 
         int algo_fw = Run(loops, [=](int algo) {
-            cublas_gemm_ex(handle,
+            mkl_gemm_ex(handle,
                            oneapi::mkl::transpose::trans,
                            oneapi::mkl::transpose::nontrans,
                            N,
@@ -77,15 +87,11 @@ public:
                            B,
                            A,
                            C,
-#ifdef __HIP_PLATFORM_AMD__
-                           static_cast<rocblas_gemm_algo>(algo));
-#else
                            static_cast<int>(algo));
-#endif
         });
 
         int algo_bw1 = Run(loops, [=](int algo) {
-            cublas_gemm_ex(handle,
+            mkl_gemm_ex(handle,
                            oneapi::mkl::transpose::nontrans,
                            oneapi::mkl::transpose::trans,
                            K,
@@ -96,15 +102,11 @@ public:
                            A,
                            C,
                            B,
-#ifdef __HIP_PLATFORM_AMD__
-                           static_cast<rocblas_gemm_algo>(algo));
-#else
                            static_cast<int>(algo));
-#endif
         });
 
         int algo_bw2 = Run(loops, [=](int algo) {
-            cublas_gemm_ex(handle,
+            mkl_gemm_ex(handle,
                            oneapi::mkl::transpose::nontrans,
                            oneapi::mkl::transpose::nontrans,
                            K,
@@ -115,11 +117,7 @@ public:
                            B,
                            C,
                            A,
-#ifdef __HIP_PLATFORM_AMD__
-                           static_cast<rocblas_gemm_algo>(algo));
-#else
                            static_cast<int>(algo));
-#endif
         });
 
         return std::array<int, 3>({algo_fw, algo_bw1, algo_bw2});
@@ -132,11 +130,7 @@ public:
         float fast_latency = (std::numeric_limits<float>::max)();
         int fast_algo = 0;
 
-#ifdef __HIP_PLATFORM_AMD__
-        for (int algo = (int)rocblas_gemm_algo_standard; algo <= (int)rocblas_gemm_algo_standard;
-#else
         for (int algo = (int)99; algo <= (int)115;
-#endif
              algo++) {
             int warm_up = 5;
             for (int i = 0; i < warm_up; ++i) f(algo);
@@ -186,11 +180,11 @@ public:
     {
     dpct::device_ext& dev_ct1 = dpct::get_current_device();
     sycl::queue& q_ct1 = dev_ct1.in_order_queue();
-        check_cuda_error(
+        check_sycl_error(
             DPCT_CHECK_ERROR(A = (T*)sycl::malloc_device(sizeof(T) * M * K * bsz, q_ct1)));
-        check_cuda_error(
+        check_sycl_error(
             DPCT_CHECK_ERROR(B = (T*)sycl::malloc_device(sizeof(T) * K * N * bsz, q_ct1)));
-        check_cuda_error(
+        check_sycl_error(
             DPCT_CHECK_ERROR(C = (T*)sycl::malloc_device(sizeof(T) * M * N * bsz, q_ct1)));
     }
 
@@ -198,9 +192,9 @@ public:
     {
     dpct::device_ext& dev_ct1 = dpct::get_current_device();
     sycl::queue& q_ct1 = dev_ct1.in_order_queue();
-        check_cuda_error(DPCT_CHECK_ERROR(sycl::free(A, q_ct1)));
-        check_cuda_error(DPCT_CHECK_ERROR(sycl::free(B, q_ct1)));
-        check_cuda_error(DPCT_CHECK_ERROR(sycl::free(C, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(sycl::free(A, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(sycl::free(B, q_ct1)));
+        check_sycl_error(DPCT_CHECK_ERROR(sycl::free(C, q_ct1)));
     }
 
     std::array<int, 3> TestAlgo(int loops)
@@ -213,7 +207,7 @@ public:
             int stride_b = N * K;
             int stride_c = M * N;
 
-            cublas_strided_batched_gemm(handle,
+            mkl_strided_batched_gemm(handle,
                                         M,
                                         N,
                                         K,
@@ -228,11 +222,7 @@ public:
                                         stride_b,
                                         stride_c,
                                         bsz,
-#ifdef __HIP_PLATFORM_AMD__
-                                        static_cast<rocblas_gemm_algo>(algo));
-#else
                                         static_cast<int>(algo));
-#endif
         });
 
         int algo_bw1 = Run(loops, [=](int algo) {
@@ -249,7 +239,7 @@ public:
                                                          : oneapi::mkl::transpose::trans);
 
             // Calculate d_A.
-            cublas_strided_batched_gemm(handle,
+            mkl_strided_batched_gemm(handle,
                                         mb,
                                         kb,
                                         N,
@@ -264,11 +254,7 @@ public:
                                         stride_b,
                                         stride_c,
                                         bsz,
-#ifdef __HIP_PLATFORM_AMD__
-                                        static_cast<rocblas_gemm_algo>(algo));
-#else
                                         static_cast<int>(algo));
-#endif
         });
 
         int algo_bw2 = Run(loops, [=](int algo) {
@@ -282,7 +268,7 @@ public:
             int stride_c = N * K;
 
             // Calculate d_B.
-            cublas_strided_batched_gemm(handle,
+            mkl_strided_batched_gemm(handle,
                                         K,
                                         N,
                                         M,
@@ -297,11 +283,7 @@ public:
                                         stride_b,
                                         stride_c,
                                         bsz,
-#ifdef __HIP_PLATFORM_AMD__
-                                        static_cast<rocblas_gemm_algo>(algo));
-#else
                                         static_cast<int>(algo));
-#endif
         });
 
         return std::array<int, 3>({algo_fw, algo_bw1, algo_bw2});
@@ -314,11 +296,7 @@ public:
         float fast_latency = (std::numeric_limits<float>::max)();
         int fast_algo = 0;
 
-#ifdef __HIP_PLATFORM_AMD__
-        for (int algo = (int)rocblas_gemm_algo_standard; algo <= (int)rocblas_gemm_algo_standard;
-#else
         for (int algo = (int)99; algo <= (int)115;
-#endif
              algo++) {
             int warm_up = 5;
             for (int i = 0; i < warm_up; ++i) f(algo);

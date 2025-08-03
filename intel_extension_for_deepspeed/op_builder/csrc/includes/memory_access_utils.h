@@ -1,3 +1,18 @@
+/*******************************************************************************
+ * Copyright 2016-2024 Intel Corporation
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *******************************************************************************/
 // Copyright (c) Microsoft Corporation.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -6,7 +21,7 @@
 #pragma once
 
 #include <sycl/sycl.hpp>
-#include <dpct/dpct.hpp>
+#include <dpct/dpct.h>
 #include "ds_kernel_utils.h"
 
 /////////////////////////////// Memory Access Utils ///////////////////////////////
@@ -657,8 +672,8 @@ namespace internal {
 #ifdef PTX_AVAILABLE
 __dpct_inline__ unsigned convert_to_shared(const void* ptr)
 {
-#if __CUDACC_VER_MAJOR__ >= 11
-    // In CUDA 11 we have a builtin intrinsic
+#if __SYCLCC_VER_MAJOR__ >= 11
+    // In SYCL 11 we have a builtin intrinsic
     return __cvta_generic_to_shared(ptr);
 #else
     unsigned ret_val;
