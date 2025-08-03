@@ -6,9 +6,12 @@ from torch.xpu.cpp_extension import DPCPPExtension, DpcppBuildExtension
 
 PACKAGE_NAME="intel_extension_for_deepspeed"
 
+# test for ci, don't merge
+
 version_str = "0.9.4"
 git_branch_cmd = "git rev-parse --abbrev-ref HEAD"
 git_hash_cmd = "git rev-parse --short HEAD"
+test_env = "123"
 
 def get_project_dir():
     project_root_dir = os.path.dirname(__file__)
